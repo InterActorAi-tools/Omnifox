@@ -4,9 +4,9 @@ import Modal from "./Modal";
 
 // What this browser keeps for the user (history, task resume state).
 const clearLocalData = (email) => {
-    localStorage.removeItem(`omnicat_history_${email}`);
-    localStorage.removeItem(`omnicat_active_task_${email}`);
-    localStorage.removeItem("omnicat_client_id");
+    localStorage.removeItem(`omnifox_history_${email}`);
+    localStorage.removeItem(`omnifox_active_task_${email}`);
+    localStorage.removeItem("omnifox_client_id");
 };
 
 const ACTIONS = {
@@ -33,7 +33,7 @@ export default function YourData({ email }) {
     const download = async () => {
         setError("");
         setBusy(true);
-        const failure = await downloadFile("/users/me/export", "omnicat-my-data.zip");
+        const failure = await downloadFile("/users/me/export", "omnifox-my-data.zip");
         setBusy(false);
         if (failure) setError("Could not prepare your data. Please try again.");
     };

@@ -1,11 +1,11 @@
 """
-Enhanced file utility functions for Omnicat with metadata support
+Enhanced file utility functions for Omnifox with metadata support
 """
 import io
 import os
 import pandas as pd
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from utils.crypto import read_file, write_file
 
@@ -57,7 +57,7 @@ def read_and_clean_excel_enhanced(file_path: str) -> Dict[str, Any]:
 def create_excel_with_charts_enhanced(processed_data: pd.DataFrame, output_path: str, 
                                     sentiment_counts: Dict[str, int], category_counts: Dict[str, int],
                                     positive_context: str, neutral_context: str, negative_context: str,
-                                    overall_summary: str = "") -> bool:
+                                    overall_summary: str = "", objective_results: List[Dict] = ()) -> bool:
     """Create Excel file with charts, data, and preserved metadata"""
     try:
         # 🔥 CRITICAL VALIDATION: Ensure we only have valid sentiment data
@@ -194,6 +194,20 @@ def create_excel_with_charts_enhanced(processed_data: pd.DataFrame, output_path:
                     ) + 2, 50)
                 
                 worksheet.set_column(i, i, max_length)
+
+            if objective_results:
+                pd.DataFrame([{
+                    "Objective": r["objective"],
+                    "Relevant Comments": r["relevant_comments"],
+                    "Supports": r["supports"],
+                    "Neutral": r["neutral"],
+                    "Against": r["against"],
+                    "% Met": r["percent_met"],
+                    "Average Alignment": r["average_alignment"],
+                    "Summary": r["summary"],
+                } for r in objective_results]).to_excel(writer, index=False, sheet_name="Objectives")
+                writer.sheets["Objectives"].set_column(0, 0, 50)
+                writer.sheets["Objectives"].set_column(7, 7, 100)
         
         write_file(output_path, buffer.getvalue())
         logger.info("Successfully created enhanced Excel file with metadata")

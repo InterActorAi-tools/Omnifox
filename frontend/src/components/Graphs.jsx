@@ -3,7 +3,7 @@ import { downloadFile } from "../services/authService";
 import PropTypes from "prop-types";
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
-const Graphs = ({ downloadLink, sentimentCounts, positiveContext, neutralContext, negativeContext, overallSummary, totalComments, skippedComments, onReset }) => {
+const Graphs = ({ downloadLink, sentimentCounts, positiveContext, neutralContext, negativeContext, overallSummary, objectiveResults = [], totalComments, skippedComments, onReset }) => {
     const [downloadError, setDownloadError] = useState(null);
 
     // Safely extract counts with fallbacks for any key format
@@ -116,6 +116,24 @@ const Graphs = ({ downloadLink, sentimentCounts, positiveContext, neutralContext
         <p dir="auto" className="text-sm text-gray-800">{overallSummary}</p>
       </section>
    )}
+   {objectiveResults.length > 0 && (
+      <section aria-labelledby="objectives-heading" className="w-full max-w-3xl mb-4 p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+        <h3 id="objectives-heading" className="font-bold text-lg text-gray-900 mb-2">Campaign objectives</h3>
+        <ul className="divide-y divide-gray-100">
+          {objectiveResults.map((o) => (
+            <li key={o.objective} className="py-3">
+              <p dir="auto" className="font-semibold text-gray-900">{o.objective}</p>
+              <p className="text-sm text-gray-700 my-1">
+                {o.percent_met === null
+                  ? "No comments addressed this objective."
+                  : `${o.percent_met}% met · average alignment ${o.average_alignment} · ${o.supports} supporting, ${o.neutral} neutral, ${o.against} against (${o.relevant_comments} relevant)`}
+              </p>
+              <p dir="auto" className="text-sm text-gray-800">{o.summary}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
+   )}
    {/* Larger Divs - Context */}
    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-3xl">
         {[
@@ -158,6 +176,16 @@ Graphs.propTypes = {
     neutralContext: PropTypes.string,
     negativeContext: PropTypes.string,
     overallSummary: PropTypes.string,
+    objectiveResults: PropTypes.arrayOf(PropTypes.shape({
+        objective: PropTypes.string,
+        relevant_comments: PropTypes.number,
+        supports: PropTypes.number,
+        neutral: PropTypes.number,
+        against: PropTypes.number,
+        percent_met: PropTypes.number,
+        average_alignment: PropTypes.number,
+        summary: PropTypes.string,
+    })),
     totalComments: PropTypes.number,
     skippedComments: PropTypes.number,
     onReset: PropTypes.func,

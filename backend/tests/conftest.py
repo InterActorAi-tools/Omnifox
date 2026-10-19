@@ -15,7 +15,7 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret-key-at-least-32-bytes-l
 os.environ.setdefault("DATA_ENCRYPTION_KEY", "VGhpcy1pcy1hLXRlc3Qta2V5LW5vdC1mb3ItcHJvZCE=")
 os.environ.setdefault("GOOGLE_CLIENT_ID", "test-google-client-id")
 os.environ.setdefault("RESEND_API_KEY", "test-resend-key")
-os.environ.setdefault("DATABASE_URL", "sqlite:///./test_omnicat.db")
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_omnifox.db")
 os.environ.setdefault("ENVIRONMENT", "development")
 os.environ.setdefault("DEBUG", "True")
 os.environ.setdefault("FRONTEND_URL", "https://test.example.com")

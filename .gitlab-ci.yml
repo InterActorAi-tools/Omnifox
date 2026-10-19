@@ -1,4 +1,4 @@
-# GitLab CI/CD pipeline for omnicat
+# GitLab CI/CD pipeline for omnifox
 # Builds Docker images and pushes to GitLab Container Registry.
 # Tagging: main -> latest + sha, dev -> staging + sha
 # Deployment: handled server-side via image watching (no deploy stage)
@@ -26,10 +26,10 @@ test_backend:
     - name: postgres:18.1
       alias: postgres
   variables:
-    POSTGRES_USER: omnicat
-    POSTGRES_PASSWORD: omnicat
-    POSTGRES_DB: omnicat_test
-    DATABASE_URL: "postgresql+psycopg2://omnicat:omnicat@postgres:5432/omnicat_test"
+    POSTGRES_USER: omnifox
+    POSTGRES_PASSWORD: omnifox
+    POSTGRES_DB: omnifox_test
+    DATABASE_URL: "postgresql+psycopg2://omnifox:omnifox@postgres:5432/omnifox_test"
     GEMINI_API_KEY: "ci-test-gemini-api-key"
     EXPORTCOMMENTS_API_KEY: "ci-test-exportcomments-api-key"
     JWT_SECRET_KEY: "ci-test-jwt-secret-key-at-least-32-bytes"
@@ -137,7 +137,7 @@ build_backend:
       --cache-from "${IMAGE_BASE}/backend:${FLOAT_TAG}"
       --tag "${IMAGE_BASE}/backend:${FLOAT_TAG}"
       --tag "${IMAGE_BASE}/backend:${CI_COMMIT_SHORT_SHA}"
-      --label "project=omnicat"
+      --label "project=omnifox"
       --label "service=backend"
       --label "git.commit=${CI_COMMIT_SHA}"
       --label "git.branch=${CI_COMMIT_REF_NAME}"
@@ -164,7 +164,7 @@ build_frontend:
       --cache-from "${IMAGE_BASE}/frontend:${FLOAT_TAG}"
       --tag "${IMAGE_BASE}/frontend:${FLOAT_TAG}"
       --tag "${IMAGE_BASE}/frontend:${CI_COMMIT_SHORT_SHA}"
-      --label "project=omnicat"
+      --label "project=omnifox"
       --label "service=frontend"
       --label "git.commit=${CI_COMMIT_SHA}"
       --label "git.branch=${CI_COMMIT_REF_NAME}"

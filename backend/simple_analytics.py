@@ -1,5 +1,5 @@
 """
-Enhanced Simple analytics service for Omnicat - Track project usage with date filtering.
+Enhanced Simple analytics service for Omnifox - Track project usage with date filtering.
 Data is stored in PostgreSQL (persisted across deployments).
 """
 import time

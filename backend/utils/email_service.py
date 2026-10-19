@@ -24,7 +24,7 @@ async def send_password_reset_email(email: str, token: str):
 
     html_content = f"""
     <p>Hi,</p>
-    <p>You requested a password reset for your OmniCat account.</p>
+    <p>You requested a password reset for your OmniFox account.</p>
     <p>Please click the link below to set a new password:</p>
     <p><a href="{reset_url}">Reset Your Password</a></p>
     <p>If you did not request this, you can safely ignore this email.</p>
@@ -33,9 +33,9 @@ async def send_password_reset_email(email: str, token: str):
 
     try:
         params = {
-            "from": "OmniCat <onboarding@resend.dev>", # Must be a verified domain in Resend
+            "from": "OmniFox <onboarding@resend.dev>", # Must be a verified domain in Resend
             "to": [email],
-            "subject": "Reset Your OmniCat Password",
+            "subject": "Reset Your OmniFox Password",
             "html": html_content,
         }
         

@@ -4,7 +4,7 @@ const Hero = () => (
   <header className="w-full max-w-4xl text-center pt-8">
     <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Analyze comments</h1>
     <p className="mt-2 text-base sm:text-lg text-gray-600">
-      Upload an Excel file or paste a post link. OmniCat translates every comment to English and sorts it by sentiment.
+      Upload an Excel file or paste a post link. OmniFox translates every comment to English and sorts it by sentiment.
     </p>
   </header>
 );

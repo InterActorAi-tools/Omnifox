@@ -7,12 +7,12 @@ x-logging: &logging
     max-file: "5"
 
 services:
-  omnicat-staging:
-    image: ${BACKEND_IMAGE:-containers.in2-comms.com/bahr/omnicat/backend:staging}
-    container_name: omnicat-staging
+  omnifox-staging:
+    image: ${BACKEND_IMAGE:-containers.in2-comms.com/bahr/omnifox/backend:staging}
+    container_name: omnifox-staging
     restart: unless-stopped
     depends_on:
-      omnicat-staging-db:
+      omnifox-staging-db:
         condition: service_healthy
     environment:
       - DATABASE_URL=${DATABASE_URL}
@@ -34,8 +34,8 @@ services:
       - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
       - GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-120}
     volumes:
-      - /data/omnicat-staging/uploads:/app/uploads
-      - /data/omnicat-staging/cache:/app/cache
+      - /data/omnifox-staging/uploads:/app/uploads
+      - /data/omnifox-staging/cache:/app/cache
     networks:
       - in2-network
     healthcheck:
@@ -47,12 +47,12 @@ services:
     mem_limit: 1g
     logging: *logging
 
-  omnicat-web-staging:
-    image: ${FRONTEND_IMAGE:-containers.in2-comms.com/bahr/omnicat/frontend:staging}
-    container_name: omnicat-web-staging
+  omnifox-web-staging:
+    image: ${FRONTEND_IMAGE:-containers.in2-comms.com/bahr/omnifox/frontend:staging}
+    container_name: omnifox-web-staging
     restart: unless-stopped
     depends_on:
-      - omnicat-staging
+      - omnifox-staging
     environment:
       - API_URL=${PUBLIC_API_URL}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
@@ -61,22 +61,22 @@ services:
     mem_limit: 256m
     logging: *logging
 
-  omnicat-staging-db:
+  omnifox-staging-db:
     image: postgres:18.1
-    container_name: omnicat-staging-db
+    container_name: omnifox-staging-db
     restart: unless-stopped
     # No host port: DB reachable only via in2-network bridge.
-    # For ops access use `docker exec omnicat-staging-db psql ...`.
+    # For ops access use `docker exec omnifox-staging-db psql ...`.
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB:-omnicat_staging}
+      - POSTGRES_DB=${POSTGRES_DB:-omnifox_staging}
     volumes:
-      - /data/omnicat-staging/postgres:/var/lib/postgresql
+      - /data/omnifox-staging/postgres:/var/lib/postgresql
     networks:
       - in2-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB:-omnicat_staging}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB:-omnifox_staging}"]
       interval: 10s
       timeout: 5s
       retries: 5

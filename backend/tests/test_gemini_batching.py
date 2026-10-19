@@ -147,3 +147,38 @@ async def test_summary_sample_spreads_over_large_skewed_groups():
     assert "positive comment 00000" in prompt and "positive comment 09" in prompt  # start and end of the group
     assert all(f"negative comment {i} " in prompt for i in range(10))           # small group fully seen
     assert len(prompt) < SUMMARY_CHAR_BUDGET * 1.15
+
+
+def test_objective_answers_are_validated_and_ordered():
+    from services.gemini_service import _parse_objectives
+
+    answers = [{"id": 1, "stance": "not_relevant", "alignment": 0.6},
+               {"id": 0, "stance": "supports", "alignment": 1.7}]
+    assert _parse_objectives(answers, 2) == [{"stance": "supports", "alignment": 1.0},
+                                             {"stance": "not_relevant", "alignment": 0.0}]
+    assert _parse_objectives(answers[:1], 2) is None  # incomplete: the comment is retried
+    assert _parse_objectives([{"id": 0, "stance": "loves it", "alignment": 0.5}], 1) is None
+    assert _parse_objectives([{"id": 0, "stance": "against", "alignment": float("nan")}], 1) is None
+
+
+@pytest.mark.asyncio
+async def test_objectives_are_sent_and_scored_per_comment():
+    seen = []
+
+    def answer(ids, n):
+        return json.dumps([{"id": i, "translation": f"t{i}", "score": 0.5, "category": "Economy",
+                            "objectives": [{"id": 0, "stance": "supports", "alignment": 0.8}]} for i in ids])
+    service, _ = _service(answer)
+    generate = service._generate
+
+    async def spy(contents, config, model=None):
+        seen.append((contents, config))
+        return await generate(contents, config, model)
+    service._generate = spy
+
+    results = await service.analyze_comments_batch_with_context(["a"], objectives=["Grow <b>trust</b>"])
+
+    assert results[0]["objectives"] == [{"stance": "supports", "alignment": 0.8}]
+    contents, config = seen[0]
+    assert "<objectives>" in contents and "<b>" not in contents  # sanitised like comments
+    assert "objectives" in config.response_json_schema["items"]["properties"]

@@ -61,7 +61,7 @@ echo "Computed CSP connect-src origin: ${CSP_API_ORIGIN}"
 # (e.g. $uri, $http_host) are left untouched. The template is shipped
 # under /etc/nginx/templates/; the rendered output goes into
 # /etc/nginx/conf.d/default.conf where nginx expects it.
-NGINX_TEMPLATE="/etc/nginx/omnicat-default.conf.template"
+NGINX_TEMPLATE="/etc/nginx/omnifox-default.conf.template"
 NGINX_CONF="/etc/nginx/conf.d/default.conf"
 
 if [[ -f "$NGINX_TEMPLATE" ]]; then

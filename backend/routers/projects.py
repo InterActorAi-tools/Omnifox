@@ -44,7 +44,7 @@ def create_project(
             detail="Project with this name already exists"
         )
 
-    new_project = Project(name=project.name)
+    new_project = Project(name=project.name, objectives=project.objectives)
     db.add(new_project)
     db.commit()
     db.refresh(new_project)

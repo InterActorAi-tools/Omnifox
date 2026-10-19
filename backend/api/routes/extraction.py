@@ -319,7 +319,8 @@ async def process_cached_extraction_async(
                 "positive_context": result_data.get("positive_context", ""),
                 "neutral_context": result_data.get("neutral_context", ""),
                 "negative_context": result_data.get("negative_context", ""),
-                "total_comments": result_data.get("total_comments", 0)
+                "total_comments": result_data.get("total_comments", 0),
+                "objective_results": result_data.get("objective_results", []),
             }
             
             cache_service.cache_url_processing(url_hash, result_data["new_filename"], sentiment_data)

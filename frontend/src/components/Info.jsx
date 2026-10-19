@@ -11,7 +11,7 @@ const Info = ({ user }) => {
   useEffect(() => {
     if (!user?.email) return;
     // History used to live in this browser; it is on the server now.
-    localStorage.removeItem(`omnicat_history_${user.email}`);
+    localStorage.removeItem(`omnifox_history_${user.email}`);
     const refresh = () => authService.listResults().then((r) => setResultCount(r.length)).catch(() => {});
     refresh();
     window.addEventListener(RESULTS_CHANGED, refresh);

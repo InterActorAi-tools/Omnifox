@@ -61,7 +61,7 @@ const PageTitle = () => {
   const { pathname } = useLocation();
   useEffect(() => {
     const page = PAGE_TITLES[pathname];
-    document.title = page ? `${page} – OmniCat` : 'OmniCat';
+    document.title = page ? `${page} – OmniFox` : 'OmniFox';
   }, [pathname]);
   return null;
 };

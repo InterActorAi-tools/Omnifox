@@ -27,9 +27,9 @@ const Navbar = ({ user }) => {
     <nav aria-label="Main" className="sticky top-0 z-50 w-full flex justify-between items-center px-4 sm:px-6 md:px-8 py-3 bg-white shadow-sm border-b border-gray-200">
       
       {/* Left Side: Logo and Title */}
-      <Link to="/app" aria-label="OmniCat home" className="flex items-center gap-2 sm:gap-3 min-w-0 rounded-lg">
+      <Link to="/app" aria-label="OmniFox home" className="flex items-center gap-2 sm:gap-3 min-w-0 rounded-lg">
         <img src={logo} alt="" className="w-8 h-8 sm:w-10 sm:h-10 object-contain rounded-full shrink-0"/>
-        <span className="hidden sm:block text-lg sm:text-xl font-bold text-gray-800 truncate">OMNICAT</span>
+        <span className="hidden sm:block text-lg sm:text-xl font-bold text-gray-800 truncate">OMNIFOX</span>
       </Link>
       
       {/* Right Side: User Info and Action Buttons */}

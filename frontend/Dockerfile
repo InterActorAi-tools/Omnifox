@@ -21,7 +21,7 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # /etc/nginx/templates/ so the base image's own 20-envsubst step does
 # not race us. Our entrypoint envsubsts ${CSP_HEADER} (composed from
 # $API_URL) into /etc/nginx/conf.d/default.conf at container start.
-COPY default.conf.template /etc/nginx/omnicat-default.conf.template
+COPY default.conf.template /etc/nginx/omnifox-default.conf.template
 COPY docker-entrypoint.sh /docker-entrypoint.d/40-app-config.sh
 RUN chmod +x /docker-entrypoint.d/40-app-config.sh
 

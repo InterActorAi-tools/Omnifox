@@ -1,4 +1,4 @@
-"""Postgres-backed task manager for Omnicat.
+"""Postgres-backed task manager for Omnifox.
 
 Replaces the previous in-memory dict-based implementation. The public
 interface (TaskStatus, ProcessingTask, task_manager singleton, and all

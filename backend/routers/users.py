@@ -286,7 +286,7 @@ async def export_my_data(
     return Response(
         content=content,
         media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="omnicat-my-data.zip"'},
+        headers={"Content-Disposition": 'attachment; filename="omnifox-my-data.zip"'},
     )
 
 

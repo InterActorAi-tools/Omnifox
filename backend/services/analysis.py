@@ -41,6 +41,7 @@ class Analysis:
         result = (self.task.result_data if self.task else None) or {}
         self.summaries: Dict[str, str] = {k: result.get(v, "") for k, v in SUMMARY_KEYS.items()}
         self.post_context: str = ((self.task.metadata_json if self.task else None) or {}).get("post_context", "")
+        self.objective_results = result.get("objective_results") or []
 
     def records(self):
         """Rows as dicts for prompts: id, translation, sentiment, score, category."""
@@ -60,6 +61,7 @@ class Analysis:
         if not create_excel_with_charts_enhanced(
             self.rows, self.path, sentiment_counts, category_counts,
             self.summaries["positive"], self.summaries["neutral"], self.summaries["negative"], self.summaries["overall"],
+            self.objective_results,
         ):
             raise ValueError("Could not write the updated report")
         os.utime(self.path, (created, created))  # 30-day retention counts from creation, not the last edit
@@ -85,5 +87,6 @@ class Analysis:
             "category_counts": category_counts,
             "total_comments": len(self.rows),
             "skipped_rows": ((self.task.result_data if self.task else None) or {}).get("skipped_rows", 0),
+            "objective_results": self.objective_results,
             **{v: self.summaries[k] for k, v in SUMMARY_KEYS.items()},
         }

@@ -209,7 +209,7 @@ def _cmd_rotate_key(_args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cli",
-        description="Omnicat operator CLI.",
+        description="Omnifox operator CLI.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

@@ -1,5 +1,5 @@
 """
-Combined OmniCat Application - Auth System + Comment Analysis
+Combined OmniFox Application - Auth System + Comment Analysis
 Merges authentication with main features on single server
 """
 import asyncio
@@ -110,7 +110,7 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    logger.info("Shutting down Combined OmniCat application...")
+    logger.info("Shutting down Combined OmniFox application...")
     cleanup_task_handle.cancel()
     try:
         await cleanup_task_handle

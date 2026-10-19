@@ -1,4 +1,4 @@
-"""FastAPI dependencies for Omnicat."""
+"""FastAPI dependencies for Omnifox."""
 from services.processing import ProcessingService
 
 

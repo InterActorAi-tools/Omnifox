@@ -93,7 +93,7 @@ def get_totp_uri(secret: str, email: str) -> str:
     import pyotp
     return pyotp.totp.TOTP(secret).provisioning_uri(
         name=email,
-        issuer_name="OmniCat"
+        issuer_name="OmniFox"
     )
 
 

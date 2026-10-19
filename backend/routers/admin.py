@@ -8,6 +8,7 @@ from models import User, Role, RefreshToken, Invitation
 from schemas.auth import UserResponse, SessionResponse
 from utils.dependencies import find_user_by_email, get_admin_user, log_activity
 from services.privacy import delete_user_data
+from utils.whitelist import require_whitelisted_email
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 import secrets
@@ -188,9 +189,9 @@ async def generate_invitation_link(
     db: Session = Depends(get_db)
 ):
     """Generate a unique registration link for a specific person"""
-    
     if find_user_by_email(db, data.email):
         raise HTTPException(status_code=400, detail="User with this email already exists")
+    require_whitelisted_email(data.email)  # @in2-comms.com only
 
     if not db.query(Role).filter(Role.name == data.role).first():
         raise HTTPException(status_code=400, detail=f"Unknown role '{data.role}'")
@@ -213,7 +214,7 @@ async def generate_invitation_link(
     # the request's Origin header. Trusting Origin lets a compromised
     # admin session (or an admin tricked into hitting an attacker-crafted
     # admin-tool URL with a forged Origin) generate phishing links that
-    # arrive from Omnicat's legitimate Resend sender domain.
+    # arrive from Omnifox's legitimate Resend sender domain.
     invite_link = f"{settings.frontend_url}/register?token={token}"
     
     log_activity(db, current_user.id, "invitation_generated", request.client.host, None, {"target_email": data.email})

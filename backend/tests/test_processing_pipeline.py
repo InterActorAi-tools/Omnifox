@@ -11,16 +11,21 @@ from utils.crypto import is_encrypted, read_file, write_file
 class FakeGemini:
     """Positive for most comments, negative for 'bad', no answer for 'fail'."""
 
-    async def analyze_comments_batch_with_context(self, texts, post_context=None, progress_callback=None):
+    async def analyze_comments_batch_with_context(self, texts, post_context=None, progress_callback=None, objectives=()):
         results = []
         for text in texts:
             if "fail" in text:
                 results.append(None)
             elif "bad" in text:
-                results.append({"translation": f"EN {text}", "score": -0.7, "sentiment": "Negative", "category": "Other"})
+                results.append({"translation": f"EN {text}", "score": -0.7, "sentiment": "Negative", "category": "Other",
+                                "objectives": [{"stance": "against", "alignment": 0.1} for _ in objectives]})
             else:
-                results.append({"translation": f"EN {text}", "score": 0.8, "sentiment": "Positive", "category": "Other"})
+                results.append({"translation": f"EN {text}", "score": 0.8, "sentiment": "Positive", "category": "Other",
+                                "objectives": [{"stance": "supports", "alignment": 0.9} for _ in objectives]})
         return results
+
+    async def summarize_objectives(self, objectives, rows):
+        return [f"summary of {o}" for o in objectives]
 
     async def summarize(self, rows, post_context="", request=""):
         return {"overall": "overall summary", "positive": "pos summary", "neutral": "neu summary", "negative": "neg summary"}
@@ -33,6 +38,7 @@ def pipeline(tmp_path, monkeypatch):
 
     monkeypatch.setattr(processing, "UPLOAD_FOLDER", str(tmp_path))
     monkeypatch.setattr(simple_analytics.simple_analytics, "track_usage", lambda **kwargs: None)
+    monkeypatch.setattr(processing, "project_objectives", lambda project: [])
     service = processing.ProcessingService()
     service.gemini_service = FakeGemini()
 
@@ -110,3 +116,33 @@ async def test_cell_values_survive_the_round_trip(pipeline):
     assert [r["Country"] for r in rows] == ["NA", "UK", "N/A"]
     assert [r["Code"] for r in rows] == ["007", "010", "1"]
     assert [r["Sentiment (original)"] for r in rows] == ["their own label", "b", "c"]
+
+
+@pytest.mark.asyncio
+async def test_comments_are_scored_against_campaign_objectives(pipeline):
+    service, source, client_dir = pipeline
+    objectives = ["Raise awareness of the vaccine drive", "Build trust in the ministry"]
+
+    result = await service.process_file_contents(str(source), "alice@example.com", "comments.xlsx",
+                                                 objectives=objectives)
+
+    first = result["objective_results"][0]
+    assert first["objective"] == objectives[0]
+    assert (first["relevant_comments"], first["supports"], first["against"]) == (4, 3, 1)
+    assert first["percent_met"] == 75.0
+    assert first["average_alignment"] == 0.7
+    assert first["summary"] == f"summary of {objectives[0]}"
+
+    workbook = openpyxl.load_workbook(io.BytesIO(read_file(str(client_dir / result["new_filename"]))))
+    header = [c.value for c in workbook["Processed Data"][1]]
+    assert {"Objective 1 Stance", "Objective 1 Alignment", "Objective 2 Stance", "Objective 2 Alignment"} <= set(header)
+    assert [c.value for c in workbook["Objectives"][1]][:2] == ["Objective", "Relevant Comments"]
+    assert workbook["Objectives"].cell(row=3, column=1).value == objectives[1]
+
+
+@pytest.mark.asyncio
+async def test_no_objectives_adds_nothing(pipeline):
+    service, source, client_dir = pipeline
+    result = await service.process_file_contents(str(source), "alice@example.com", "comments.xlsx")
+    assert result["objective_results"] == []
+    assert "Objectives" not in openpyxl.load_workbook(io.BytesIO(read_file(str(client_dir / result["new_filename"])))).sheetnames

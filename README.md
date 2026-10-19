@@ -1,16 +1,14 @@
-# 🏺 Omnicat - Enterprise Comment Sentiment Analysis Platform
+# 🦊 OmniFox - Comms Campaign Objective Analysis
 
-![Version](https://img.shields.io/badge/version-2.1.0-green.svg)
-![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-00d4aa.svg)
-![React](https://img.shields.io/badge/React-18.0+-61dafb.svg)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791.svg)
-![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
+> OmniFox is the department version of OmniCat. When you create a project you enter the comms campaign objectives; every comment is then scored for sentiment and against each objective, and the report shows how far each objective is being met.
 
-> Transform social media comments into actionable insights with AI-powered sentiment analysis, translation, and categorization. Now with enterprise-grade security and user management.
+## 🎯 Campaign objectives
 
-## ✨ New in v2.1.0
+- **Objectives per project**: admins enter up to 10 objectives (one per line) when creating a project.
+- **Per comment**: for each objective a stance (supports, neutral, against, not relevant) and an alignment score from 0 to 1.
+- **Per objective**: % met (supporting share of relevant comments), average alignment, stance counts and an AI summary.
+- **Report**: `Objective N Stance` / `Objective N Alignment` columns in the processed data, plus an `Objectives` sheet.
+- **Access**: only `@in2-comms.com` emails can be invited or sign in.
 
 ### 🔐 Enterprise Security & Auth
 
@@ -68,7 +66,7 @@
 
 ```bash
 git clone <your-repo-url>
-cd omnicat
+cd omnifox
 ```
 
 ### 2. Backend setup
@@ -143,13 +141,13 @@ Reference: see [`.env.example`](.env.example) for the full, commented template. 
 # ---- Runtime ----
 ENVIRONMENT=production
 DEBUG=False
-CORS_ORIGINS=https://omnicat.example.com
+CORS_ORIGINS=https://omnifox.example.com
 
 # ---- Database ----
-POSTGRES_USER=omnicat
+POSTGRES_USER=omnifox
 POSTGRES_PASSWORD=<strong-random-password>
-POSTGRES_DB=omnicat
-DATABASE_URL=postgresql+psycopg2://omnicat:<password>@db:5432/omnicat
+POSTGRES_DB=omnifox
+DATABASE_URL=postgresql+psycopg2://omnifox:<password>@db:5432/omnifox
 
 # ---- Backend secrets ----
 # Generate with: python -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -201,7 +199,7 @@ GUNICORN_TIMEOUT=120
 ## 🏗️ Architecture
 
 ```text
-omnicat/
+omnifox/
 ├── 🐍 Backend (FastAPI + PostgreSQL)
 │   ├── main.py                # App entry point
 │   ├── config.py              # Settings management

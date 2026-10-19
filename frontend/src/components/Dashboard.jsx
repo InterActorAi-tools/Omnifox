@@ -111,6 +111,7 @@ export default function Dashboard() {
     const [projects, setProjects] = useState([]);
     const [showAddProject, setShowAddProject] = useState(false);
     const [newProjectName, setNewProjectName] = useState("");
+    const [newProjectObjectives, setNewProjectObjectives] = useState("");
     const [modalConfig, setModalConfig] = useState(null); 
     const [confirmConfig, setConfirmConfig] = useState({ 
         isOpen: false, 
@@ -224,8 +225,9 @@ export default function Dashboard() {
     const handleAddProject = async (e) => {
         e.preventDefault();
         try {
-            await api.post("/projects", { name: newProjectName });
+            await api.post("/projects", { name: newProjectName, objectives: newProjectObjectives.split("\n") });
             setNewProjectName("");
+            setNewProjectObjectives("");
             setShowAddProject(false);
             loadAdminData(); 
             // 👇 Uses the fancy modal instead of alert()
@@ -304,7 +306,7 @@ export default function Dashboard() {
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                         <img src={logo} alt="" className="h-8 w-8 sm:h-10 sm:w-10 object-contain shrink-0" />
                         <div className="min-w-0">
-                            <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-none truncate">OmniCat Dashboard</h1>
+                            <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-none truncate">OmniFox Dashboard</h1>
                         </div>
                     </div>
 
@@ -394,7 +396,7 @@ export default function Dashboard() {
                             {showAddProject && (
                                 <div className="mb-6">
                                     <DashboardCard className="p-4 bg-green-50 border-green-200">
-                                        <form onSubmit={handleAddProject} className="flex flex-col sm:flex-row gap-4 items-end">
+                                        <form onSubmit={handleAddProject} className="flex flex-col gap-4">
                                             <div className="flex-1 w-full">
                                                 <label htmlFor="project-name" className="block text-sm font-medium text-gray-700 mb-1">New Project Name</label>
                                                 <input
@@ -405,6 +407,17 @@ export default function Dashboard() {
                                                     onChange={(e) => setNewProjectName(e.target.value)}
                                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                                     placeholder="e.g. Q4 Marketing Campaign"
+                                                />
+                                            </div>
+                                            <div className="w-full">
+                                                <label htmlFor="project-objectives" className="block text-sm font-medium text-gray-700 mb-1">Campaign objectives (one per line)</label>
+                                                <textarea
+                                                    id="project-objectives"
+                                                    rows={4}
+                                                    value={newProjectObjectives}
+                                                    onChange={(e) => setNewProjectObjectives(e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                                    placeholder={"e.g. Raise awareness of the vaccination drive\nBuild trust in the health ministry"}
                                                 />
                                             </div>
                                             <button type="submit" className="w-full sm:w-auto px-4 py-2 bg-green-700 text-white rounded-lg font-medium hover:bg-green-800">
@@ -430,6 +443,11 @@ export default function Dashboard() {
                                                     <div>
                                                         <p className="font-bold text-gray-900">{p.name}</p>
                                                         <p className="text-xs text-gray-500">ID: {p.id}</p>
+                                                        {p.objectives?.length > 0 && (
+                                                            <ol className="mt-1 list-decimal list-inside text-sm text-gray-700">
+                                                                {p.objectives.map((o) => <li key={o}>{o}</li>)}
+                                                            </ol>
+                                                        )}
                                                     </div>
                                                 </div>
                                                 <button

@@ -19,6 +19,8 @@ from concurrent.futures import ThreadPoolExecutor
 # Import your analytics module (make sure this path is correct for your project structure)
 from simple_analytics import simple_analytics 
 from config import settings, UPLOAD_FOLDER
+from database import SessionLocal
+from models import Project
 from task_manager import TaskStatus, smooth_progress, user_error
 from services.gemini_service import get_gemini
 from utils.file_utils import read_and_clean_excel_enhanced, create_excel_with_charts_enhanced
@@ -28,6 +30,36 @@ logger = logging.getLogger(__name__)
 # Shared by every ProcessingService instance. A pool per instance leaked
 # up to max_workers idle threads for each request that built a service.
 _processing_executor = ThreadPoolExecutor(max_workers=settings.max_workers, thread_name_prefix="processing")
+
+def project_objectives(project: str) -> List[str]:
+    """The campaign objectives saved on the project (none for an unknown project)."""
+    db = SessionLocal()
+    try:
+        row = db.query(Project).filter(Project.name == project).first()
+        return list(row.objectives or []) if row else []
+    finally:
+        db.close()
+
+
+def objective_results(objectives: List[str], scores: List[List[Dict]], summaries: List[str]) -> List[Dict]:
+    """Per objective: stance counts over the comments relevant to it, % met
+    (share of relevant comments that support it), average alignment and the AI summary."""
+    results = []
+    for k, objective in enumerate(objectives):
+        relevant = [s[k] for s in scores if s[k]["stance"] != "not_relevant"]
+        counts = Counter(s["stance"] for s in relevant)
+        results.append({
+            "objective": objective,
+            "relevant_comments": len(relevant),
+            "supports": counts["supports"],
+            "neutral": counts["neutral"],
+            "against": counts["against"],
+            "percent_met": round(100 * counts["supports"] / len(relevant), 1) if relevant else None,
+            "average_alignment": round(sum(s["alignment"] for s in relevant) / len(relevant), 2) if relevant else None,
+            "summary": summaries[k],
+        })
+    return results
+
 
 class ProcessingService:
     """Service for processing comments with production logging and strict row filtering"""
@@ -55,9 +87,14 @@ class ProcessingService:
     async def process_file_contents(self, file_path: str, client_id: str, 
                                   base_filename: str, task_id: str = None, 
                                   task_manager=None, project: str = "default",
-                                  progress_callback=None, post_context: str = None) -> Dict[str, Any]:
-        """Process file contents with optional post context"""
+                                  progress_callback=None, post_context: str = None,
+                                  objectives: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Process file contents with optional post context. Comments are also scored
+        against the project's campaign objectives (looked up when not given)."""
         try:
+            if objectives is None:
+                objectives = await asyncio.to_thread(project_objectives, project)
+
             # CHECK FOR CANCELLATION
             if task_manager and task_id and task_manager.is_task_cancelled(task_id):
                 logger.info(f"Task {task_id} cancelled before processing started")
@@ -96,7 +133,7 @@ class ProcessingService:
             # 🔥 Pass post_context to processing
             result_data = await self._process_comments_in_chunks_enhanced(
                 all_texts, metadata_df, client_id, base_filename, task_id, 
-                task_manager, project, progress_callback, post_context
+                task_manager, project, progress_callback, post_context, objectives
             )
             
             return result_data
@@ -116,7 +153,8 @@ class ProcessingService:
     async def _process_comments_in_chunks_enhanced(self, all_texts: List[str], metadata_df: Optional[pd.DataFrame],
                                                  client_id: str, base_filename: str, task_id: str = None,
                                                  task_manager=None, project: str = "default", 
-                                                 progress_callback=None, post_context: str = None) -> Dict[str, Any]:
+                                                 progress_callback=None, post_context: str = None,
+                                                 objectives: List[str] = ()) -> Dict[str, Any]:
         """Process comments with optional post context"""
         total_comments = len(all_texts)
         self._processing_stats['last_batch_size'] = total_comments
@@ -157,7 +195,7 @@ class ProcessingService:
         try:
             # 🔥 Use context-aware batch processing (from Dev version)
             analyses = await self.gemini_service.analyze_comments_batch_with_context(
-                all_texts, post_context, gemini_progress_callback
+                all_texts, post_context, gemini_progress_callback, objectives
             )
         except asyncio.CancelledError:
             logger.info(f"Processing cancelled for task {task_id}")
@@ -176,7 +214,8 @@ class ProcessingService:
             progress_callback(90, 100)
         
         final_results = await self._create_final_results_enhanced(
-            all_texts, analyses, metadata_df, client_id, base_filename, project, task_id, task_manager, post_context
+            all_texts, analyses, metadata_df, client_id, base_filename, project, task_id, task_manager, post_context,
+            objectives
         )
         
         if task_manager and task_id:
@@ -195,7 +234,7 @@ class ProcessingService:
                                            metadata_df: Optional[pd.DataFrame],
                                            client_id: str, base_filename: str, project: str = "default",
                                            task_id: str = None, task_manager=None,
-                                           post_context: str = None) -> Dict[str, Any]:
+                                           post_context: str = None, objectives: List[str] = ()) -> Dict[str, Any]:
         """Create final results with strict row filtering"""
         try:
             if task_manager and task_id and task_manager.is_task_cancelled(task_id):
@@ -208,6 +247,7 @@ class ProcessingService:
             sentiment_scores = []
             sentiment_list = []
             category_list = []
+            objective_scores = []
             skipped_rows = 0
             
             self._log_processing_milestone("=== PROCESSING RESULTS WITH STRICT FILTERING ===", force_log=True)
@@ -222,6 +262,8 @@ class ProcessingService:
                 sentiment_scores.append(analysis["score"])
                 sentiment_list.append(analysis["sentiment"].lower())
                 category_list.append(analysis["category"])
+                if objectives:
+                    objective_scores.append(analysis["objectives"])
             
             self._processing_stats['total_processed'] += len(valid_rows)
             self._processing_stats['total_failed'] += skipped_rows
@@ -247,6 +289,10 @@ class ProcessingService:
                 "Category": category_list
             })
             
+            for k in range(len(objectives)):
+                processed_data[f"Objective {k + 1} Stance"] = [s[k]["stance"] for s in objective_scores]
+                processed_data[f"Objective {k + 1} Alignment"] = [s[k]["alignment"] for s in objective_scores]
+
             if settings.debug:
                 logger.info(f"📋 Created base DataFrame with {len(processed_data)} rows and {len(processed_data.columns)} columns")
             
@@ -278,6 +324,12 @@ class ProcessingService:
             positive_context, neutral_context, negative_context = (
                 summaries["positive"], summaries["neutral"], summaries["negative"])
 
+            objectives_summary = []
+            if objectives:
+                objective_summaries = await self.gemini_service.summarize_objectives(
+                    objectives, [{"translation": t, "objectives": o} for t, o in zip(translations, objective_scores)])
+                objectives_summary = objective_results(objectives, objective_scores, objective_summaries)
+
             sentiment_counts = dict(Counter(sentiment_list))
             category_counts = dict(Counter(category_list))
             
@@ -296,7 +348,8 @@ class ProcessingService:
                 self.thread_pool,
                 create_excel_with_charts_enhanced,
                 processed_data, output_path, sentiment_counts, category_counts,
-                positive_context, neutral_context, negative_context, summaries["overall"]
+                positive_context, neutral_context, negative_context, summaries["overall"],
+                objectives_summary
             )
             
             if not excel_created:
@@ -316,6 +369,7 @@ class ProcessingService:
                 "positive_context": positive_context,
                 "neutral_context": neutral_context,
                 "negative_context": negative_context,
+                "objective_results": objectives_summary,
                 "metadata_columns": list(processed_data.columns),
                 "excel_row_count": len(processed_data)
             }

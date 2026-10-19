@@ -3,8 +3,8 @@ import { render, screen } from "@testing-library/react";
 
 describe("frontend smoke", () => {
     it("renders a React component into jsdom", () => {
-        render(<h1>OMNICAT</h1>);
-        expect(screen.getByRole("heading", { name: "OMNICAT" })).toBeInTheDocument();
+        render(<h1>OMNIFOX</h1>);
+        expect(screen.getByRole("heading", { name: "OMNIFOX" })).toBeInTheDocument();
     });
 
     it("exposes runtime config on window.APP_CONFIG", () => {

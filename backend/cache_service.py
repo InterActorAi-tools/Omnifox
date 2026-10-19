@@ -1,5 +1,5 @@
 """
-Postgres-backed URL cache for Omnicat.
+Postgres-backed URL cache for Omnifox.
 
 Caches ExportComments extractions (and their processed results) per
 URL + project with a 24-hour TTL. Stored in the `url_cache` table so all

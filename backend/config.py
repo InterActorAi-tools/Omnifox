@@ -1,5 +1,5 @@
 """
-Configuration management for Omnicat application - Production-Ready Database-free version
+Configuration management for Omnifox application - Production-Ready Database-free version
 """
 import os
 from pathlib import Path
@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     
     
     # 🔥 NEW: Auth System Settings (Restored)
-    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./omnicat.db")
+    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./omnifox.db")
     jwt_secret_key: str = ""
     # Fernet key(s) for personal data at rest. Comma-separated: the first
     # encrypts, all decrypt (lets you rotate keys).
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     frontend_url: str = ""
     
     # FastAPI Settings
-    app_title: str = "OMNICAT"
+    app_title: str = "OMNIFOX"
     app_version: str = "3.1.0"  
     debug: bool = False
     
@@ -183,7 +183,7 @@ if not settings.data_encryption_key:
 # defaults (H12) and reset emails point at staging (M11). Hard-fail at
 # boot so the misconfiguration is loud.
 if not settings.frontend_url:
-    raise ValueError("FRONTEND_URL is not set. This must be the public https URL of the frontend (e.g. https://omnicat.example.com).")
+    raise ValueError("FRONTEND_URL is not set. This must be the public https URL of the frontend (e.g. https://omnifox.example.com).")
 if settings.is_production and not settings.frontend_url.startswith("https://"):
     raise ValueError("FRONTEND_URL must use https:// in production.")
 

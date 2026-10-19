@@ -115,7 +115,7 @@ export default function Login({ onLoginSuccess }) {
         {show2FA ? (
           <>
             <div>
-              <img src={logo} alt="OmniCat Logo" className="w-20 h-20 mx-auto rounded-full"/>
+              <img src={logo} alt="OmniFox Logo" className="w-20 h-20 mx-auto rounded-full"/>
               <h1 className="mt-4 text-center text-2xl sm:text-3xl font-extrabold text-gray-900">
                 Check Your Authenticator
               </h1>
@@ -159,9 +159,9 @@ export default function Login({ onLoginSuccess }) {
           /* Original Login Form */
           <>
             <div>
-              <img src={logo} alt="OmniCat Logo" className="w-20 h-20 mx-auto rounded-full"/>
+              <img src={logo} alt="OmniFox Logo" className="w-20 h-20 mx-auto rounded-full"/>
               <h1 className="mt-4 text-center text-2xl sm:text-3xl font-extrabold text-gray-900">
-                Sign in to OMNICAT
+                Sign in to OMNIFOX
               </h1>
             {/*   <p className="mt-2 text-center text-sm text-gray-600">
                 Or{' '}

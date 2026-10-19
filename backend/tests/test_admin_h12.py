@@ -2,12 +2,12 @@
 
 Before this fix, generate_invitation_link did:
 
-    base_url = request.headers.get("origin") or "https://staging-omnicat..."
+    base_url = request.headers.get("origin") or "https://staging-omnifox..."
 
 A compromised admin session (or admin tricked into an attacker-prepared
 admin-tool URL with a forged Origin) sent invite emails whose link
 pointed at an attacker-controlled domain - a phishing primitive against
-new invitees who had no prior Omnicat URL to compare against.
+new invitees who had no prior Omnifox URL to compare against.
 
 This test set asserts:
   - the link uses settings.frontend_url verbatim
@@ -95,14 +95,14 @@ class TestInviteLinkSource:
         from models import User
         from routers.admin import generate_invitation_link, GenerateInviteRequest
 
-        monkeypatch.setattr(settings, "frontend_url", "https://omnicat.example.com")
+        monkeypatch.setattr(settings, "frontend_url", "https://omnifox.example.com")
 
         db = isolated_db()
         try:
             current_admin = db.query(User).filter(User.id == admin_user).first()
             result = await generate_invitation_link(
                 data=GenerateInviteRequest(
-                    email="invitee@example.com",
+                    email="invitee@in2-comms.com",
                     name="Invitee",
                     role="basic_user",
                 ),
@@ -113,7 +113,7 @@ class TestInviteLinkSource:
         finally:
             db.close()
 
-        assert result["link"].startswith("https://omnicat.example.com/register?token=")
+        assert result["link"].startswith("https://omnifox.example.com/register?token=")
         assert result["token"] in result["link"]
 
     @pytest.mark.asyncio
@@ -127,14 +127,14 @@ class TestInviteLinkSource:
         from models import User
         from routers.admin import generate_invitation_link, GenerateInviteRequest
 
-        monkeypatch.setattr(settings, "frontend_url", "https://omnicat.example.com")
+        monkeypatch.setattr(settings, "frontend_url", "https://omnifox.example.com")
 
         db = isolated_db()
         try:
             current_admin = db.query(User).filter(User.id == admin_user).first()
             result = await generate_invitation_link(
                 data=GenerateInviteRequest(
-                    email="invitee2@example.com",
+                    email="invitee2@in2-comms.com",
                     name="Invitee",
                     role="basic_user",
                 ),
@@ -145,7 +145,7 @@ class TestInviteLinkSource:
         finally:
             db.close()
 
-        assert result["link"].startswith("https://omnicat.example.com/register?token=")
+        assert result["link"].startswith("https://omnifox.example.com/register?token=")
         assert "attacker.evil" not in result["link"]
 
     @pytest.mark.asyncio
@@ -158,14 +158,14 @@ class TestInviteLinkSource:
         from models import User
         from routers.admin import generate_invitation_link, GenerateInviteRequest
 
-        monkeypatch.setattr(settings, "frontend_url", "https://omnicat.example.com")
+        monkeypatch.setattr(settings, "frontend_url", "https://omnifox.example.com")
 
         db = isolated_db()
         try:
             current_admin = db.query(User).filter(User.id == admin_user).first()
             result = await generate_invitation_link(
                 data=GenerateInviteRequest(
-                    email="invitee3@example.com",
+                    email="invitee3@in2-comms.com",
                     name="Invitee",
                     role="basic_user",
                 ),
@@ -176,7 +176,7 @@ class TestInviteLinkSource:
         finally:
             db.close()
 
-        assert result["link"].startswith("https://omnicat.example.com/register?token=")
+        assert result["link"].startswith("https://omnifox.example.com/register?token=")
         assert "0mnicat" not in result["link"]
 
 
@@ -191,7 +191,7 @@ class TestPasswordResetURL:
         from config import settings
         from utils import email_service
 
-        monkeypatch.setattr(settings, "frontend_url", "https://omnicat.example.com")
+        monkeypatch.setattr(settings, "frontend_url", "https://omnifox.example.com")
 
         captured = {}
 
@@ -212,5 +212,5 @@ class TestPasswordResetURL:
             "user@example.com", "tok-abc123"
         )
         assert ok is True
-        assert "https://omnicat.example.com/reset-password?token=tok-abc123" in captured["html"]
-        assert "staging-omnicat.in2-comms.com" not in captured["html"]
+        assert "https://omnifox.example.com/reset-password?token=tok-abc123" in captured["html"]
+        assert "staging-omnifox.in2-comms.com" not in captured["html"]

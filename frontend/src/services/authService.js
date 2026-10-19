@@ -320,7 +320,7 @@ export const authService = {
 };
 
 // Tells the History button to recount after a result is added or deleted.
-export const RESULTS_CHANGED = "omnicat:results-changed";
+export const RESULTS_CHANGED = "omnifox:results-changed";
 export const notifyResultsChanged = (detail = {}) => window.dispatchEvent(new CustomEvent(RESULTS_CHANGED, { detail }));
 
 // Download a result file through the shared client, so an expired access

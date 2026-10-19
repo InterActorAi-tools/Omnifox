@@ -26,6 +26,7 @@ const Demo = ({ user }) => {
     const [neutralContext, setNeutralContext] = useState("");
     const [negativeContext, setNegativeContext] = useState("");
     const [overallSummary, setOverallSummary] = useState("");
+    const [objectiveResults, setObjectiveResults] = useState([]);
     const [totalComments, setTotalComments] = useState(0);
     const [skippedComments, setSkippedComments] = useState(0);
     const [clientId, setClientId] = useState("");
@@ -119,6 +120,7 @@ const Demo = ({ user }) => {
         setNeutralContext(result.neutral_context || "");
         setNegativeContext(result.negative_context || "");
         setOverallSummary(result.overall_summary || "");
+        setObjectiveResults(result.objective_results || []);
         setTotalComments(result.total_comments || 0);
         setSkippedComments(result.skipped_rows || 0);
     };
@@ -242,7 +244,7 @@ const Demo = ({ user }) => {
                 setIsProcessing(false);
                 setIsUploading(false);
                 stopTokenRefreshInterval();
-                localStorage.removeItem(`omnicat_active_task_${clientId}`);
+                localStorage.removeItem(`omnifox_active_task_${clientId}`);
                 evtSource.close();
                 return;
             }
@@ -292,7 +294,7 @@ const Demo = ({ user }) => {
                         setIsUploading(false);
                     }, 1000);
 
-                    localStorage.removeItem(`omnicat_active_task_${clientId}`);
+                    localStorage.removeItem(`omnifox_active_task_${clientId}`);
 
                     notifyResultsChanged();
                 }
@@ -370,7 +372,7 @@ const Demo = ({ user }) => {
                     setCurrentTaskId(data.task_id);
                     updateProgressSmooth(5, "File uploaded, starting processing...");
                     localStorage.setItem(
-                        `omnicat_active_task_${clientId}`,
+                        `omnifox_active_task_${clientId}`,
                         JSON.stringify({
                             taskId: data.task_id,
                             type: "file",
@@ -447,7 +449,7 @@ const Demo = ({ user }) => {
                         setCurrentTaskId(data.task_id);
                         updateProgressSmooth(5, data.message || "Starting extraction...");
                         localStorage.setItem(
-                            `omnicat_active_task_${clientId}`,
+                            `omnifox_active_task_${clientId}`,
                             JSON.stringify({
                                 taskId: data.task_id,
                                 type: "url",
@@ -501,14 +503,14 @@ const Demo = ({ user }) => {
     useEffect(() => {
         if (user?.email) {
             setClientId(user.email);
-            localStorage.setItem("omnicat_client_id", user.email);
+            localStorage.setItem("omnifox_client_id", user.email);
         } else {
-            const storedClientId = localStorage.getItem("omnicat_client_id");
+            const storedClientId = localStorage.getItem("omnifox_client_id");
             if (storedClientId) {
                 setClientId(storedClientId);
             } else {
                 const newClientId = uuidv4();
-                localStorage.setItem("omnicat_client_id", newClientId);
+                localStorage.setItem("omnifox_client_id", newClientId);
                 setClientId(newClientId);
             }
         }
@@ -546,7 +548,7 @@ const Demo = ({ user }) => {
 
             try {
                 // 1. Check localStorage (survives refresh/close; preserved across logout since Issue 1 fix)
-                const stored = localStorage.getItem(`omnicat_active_task_${clientId}`);
+                const stored = localStorage.getItem(`omnifox_active_task_${clientId}`);
                 if (stored) {
                     const taskData = JSON.parse(stored);
                     const response = await authenticatedFetch(
@@ -563,7 +565,7 @@ const Demo = ({ user }) => {
                             await fetchCompletedResults(taskData.taskId);
                         }
                     }
-                    localStorage.removeItem(`omnicat_active_task_${clientId}`);
+                    localStorage.removeItem(`omnifox_active_task_${clientId}`);
                     return;
                 }
 
@@ -579,7 +581,7 @@ const Demo = ({ user }) => {
                     if (active) {
                         // Persist so future refreshes use the fast path
                         localStorage.setItem(
-                            `omnicat_active_task_${clientId}`,
+                            `omnifox_active_task_${clientId}`,
                             JSON.stringify({
                                 taskId: active.task_id,
                                 type: active.task_type || "file",
@@ -597,7 +599,7 @@ const Demo = ({ user }) => {
                 }
             } catch (error) {
                 console.error("Error checking resumable tasks:", error);
-                localStorage.removeItem(`omnicat_active_task_${clientId}`);
+                localStorage.removeItem(`omnifox_active_task_${clientId}`);
             }
         };
 
@@ -656,6 +658,7 @@ const Demo = ({ user }) => {
                     neutralContext={neutralContext}
                     negativeContext={negativeContext}
                     overallSummary={overallSummary}
+                    objectiveResults={objectiveResults}
                     totalComments={totalComments}
                     skippedComments={skippedComments}
                     onReset={resetForNewAnalysis}
@@ -905,7 +908,7 @@ const Demo = ({ user }) => {
                                         setCurrentTaskId(null);
                                         setDisplayProgress(0);
                                         progressStateRef.current = 0;
-                                        localStorage.removeItem(`omnicat_active_task_${clientId}`);
+                                        localStorage.removeItem(`omnifox_active_task_${clientId}`);
                                     } catch (error) {
                                         console.error("Error cancelling task:", error);
                                     }
