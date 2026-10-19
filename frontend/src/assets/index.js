@@ -1,3 +1,3 @@
-import logo from './Omi_cat_logo.webp'
+import logo from './omnifox_logo.webp'
 
 export { logo }
