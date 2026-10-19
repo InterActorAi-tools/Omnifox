@@ -146,3 +146,12 @@ async def test_no_objectives_adds_nothing(pipeline):
     result = await service.process_file_contents(str(source), "alice@example.com", "comments.xlsx")
     assert result["objective_results"] == []
     assert "Objectives" not in openpyxl.load_workbook(io.BytesIO(read_file(str(client_dir / result["new_filename"])))).sheetnames
+
+
+def test_project_objectives_are_cleaned():
+    from schemas.projects import ProjectCreate
+
+    project = ProjectCreate(name="Q4", objectives=["Build trust\r", "", "  ", "Build trust", "Raise awareness"])
+    assert project.objectives == ["Build trust", "Raise awareness"]
+    with pytest.raises(ValueError):
+        ProjectCreate(name="Q4", objectives=[f"objective {i}" for i in range(11)])

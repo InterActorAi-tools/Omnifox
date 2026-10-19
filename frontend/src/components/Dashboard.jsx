@@ -410,7 +410,7 @@ export default function Dashboard() {
                                                 />
                                             </div>
                                             <div className="w-full">
-                                                <label htmlFor="project-objectives" className="block text-sm font-medium text-gray-700 mb-1">Campaign objectives (one per line)</label>
+                                                <label htmlFor="project-objectives" className="block text-sm font-medium text-gray-700 mb-1">Campaign objectives (one per line, up to 10)</label>
                                                 <textarea
                                                     id="project-objectives"
                                                     rows={4}

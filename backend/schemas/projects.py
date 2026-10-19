@@ -13,7 +13,7 @@ class ProjectCreate(BaseModel):
     @field_validator("objectives")
     @classmethod
     def clean_objectives(cls, value: List[str]) -> List[str]:
-        value = [o.strip() for o in value if o.strip()]
+        value = list(dict.fromkeys(o.strip() for o in value if o.strip()))  # no blanks or repeats
         if len(value) > MAX_OBJECTIVES:
             raise ValueError(f"At most {MAX_OBJECTIVES} objectives")
         if any(len(o) > MAX_OBJECTIVE_LEN for o in value):

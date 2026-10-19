@@ -220,7 +220,8 @@ def _classify_config(with_objectives: bool) -> types.GenerateContentConfig:
     return types.GenerateContentConfig(
         system_instruction=CLASSIFY_INSTRUCTION + (OBJECTIVES_INSTRUCTION if with_objectives else ""),
         temperature=0.1,
-        max_output_tokens=16384,
+        # Up to 10 objective entries per comment roughly doubles the answer size.
+        max_output_tokens=32768 if with_objectives else 16384,
         response_mime_type="application/json",
         response_json_schema={"type": "array", "items": {"type": "object", "properties": properties,
                                                          "required": list(properties)}},
