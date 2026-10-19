@@ -1,0 +1,174 @@
+# GitLab CI/CD pipeline for omnicat
+# Builds Docker images and pushes to GitLab Container Registry.
+# Tagging: main -> latest + sha, dev -> staging + sha
+# Deployment: handled server-side via image watching (no deploy stage)
+
+stages:
+  - test
+  - build
+
+workflow:
+  rules:
+    - if: $CI_MERGE_REQUEST_IID
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "dev"
+
+variables:
+  IMAGE_BASE: ${CI_REGISTRY_IMAGE}
+  PIP_CACHE_DIR: ".cache/pip"
+
+# Test Stage
+
+test_backend:
+  stage: test
+  image: python:3.10-slim
+  services:
+    - name: postgres:18.1
+      alias: postgres
+  variables:
+    POSTGRES_USER: omnicat
+    POSTGRES_PASSWORD: omnicat
+    POSTGRES_DB: omnicat_test
+    DATABASE_URL: "postgresql+psycopg2://omnicat:omnicat@postgres:5432/omnicat_test"
+    GEMINI_API_KEY: "ci-test-gemini-api-key"
+    EXPORTCOMMENTS_API_KEY: "ci-test-exportcomments-api-key"
+    JWT_SECRET_KEY: "ci-test-jwt-secret-key-at-least-32-bytes"
+    DATA_ENCRYPTION_KEY: "VGhpcy1pcy1hLXRlc3Qta2V5LW5vdC1mb3ItcHJvZCE="
+    GOOGLE_CLIENT_ID: "ci-test-google-client-id"
+    RESEND_API_KEY: "ci-test-resend-key"
+    ENVIRONMENT: "development"
+    DEBUG: "True"
+  cache:
+    key:
+      files:
+        - backend/requirements.txt
+    paths:
+      - .cache/pip
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev
+    - python -m pip install --upgrade pip
+    - pip install -r backend/requirements.txt
+  script:
+    - cd backend
+    - pytest -q
+  rules:
+    - if: $CI_MERGE_REQUEST_IID
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "dev"
+
+test_frontend:
+  stage: test
+  image: node:22-alpine  # vitest 5 requires Node >= 22.12
+  cache:
+    key:
+      files:
+        - frontend/package-lock.json
+    paths:
+      - frontend/node_modules
+  before_script:
+    - cd frontend
+    - npm ci
+  script:
+    - npm run lint
+    - npm test
+  rules:
+    - if: $CI_MERGE_REQUEST_IID
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "dev"
+
+audit_dependencies:
+  stage: test
+  image: python:3.10-slim
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends nodejs npm
+    - pip install pip-audit
+  script:
+    # setuptools stays <81: the exportcomments SDK imports pkg_resources,
+    # which setuptools 81 removed. Revisit when the SDK drops it.
+    - pip-audit -r backend/requirements.txt --ignore-vuln PYSEC-2026-3447
+    - cd frontend && npm audit --omit=dev --audit-level=high
+  rules:
+    - if: $CI_MERGE_REQUEST_IID
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "dev"
+
+# Build Stage
+
+.build-template: &build-template
+  stage: build
+  image: docker:27
+  services:
+    - name: docker:27-dind
+      alias: docker
+      command: ["--host=tcp://0.0.0.0:2375", "--tls=false"]
+      variables:
+        DOCKER_TLS_CERTDIR: ""
+  variables:
+    DOCKER_HOST: "tcp://docker:2375"
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: "overlay2"
+    DOCKER_BUILDKIT: "1"
+    FLOAT_TAG: $CI_COMMIT_BRANCH
+  before_script:
+    - docker login -u gitlab-ci-token -p "${CI_JOB_TOKEN}" "${CI_REGISTRY}"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      variables:
+        FLOAT_TAG: "latest"
+    - if: $CI_COMMIT_BRANCH == "dev"
+      variables:
+        FLOAT_TAG: "staging"
+
+build_backend:
+  <<: *build-template
+  needs:  # every check must pass before an image is built
+    - job: test_backend
+      artifacts: false
+    - job: test_frontend
+      artifacts: false
+    - job: audit_dependencies
+      artifacts: false
+  script:
+    - >
+      docker build
+      --build-arg BUILDKIT_INLINE_CACHE=1
+      --build-arg COMMIT_SHA="${CI_COMMIT_SHORT_SHA}"
+      --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      --cache-from "${IMAGE_BASE}/backend:${FLOAT_TAG}"
+      --tag "${IMAGE_BASE}/backend:${FLOAT_TAG}"
+      --tag "${IMAGE_BASE}/backend:${CI_COMMIT_SHORT_SHA}"
+      --label "project=omnicat"
+      --label "service=backend"
+      --label "git.commit=${CI_COMMIT_SHA}"
+      --label "git.branch=${CI_COMMIT_REF_NAME}"
+      --file backend/Dockerfile
+      backend
+    - docker push "${IMAGE_BASE}/backend:${FLOAT_TAG}"
+    - docker push "${IMAGE_BASE}/backend:${CI_COMMIT_SHORT_SHA}"
+
+build_frontend:
+  <<: *build-template
+  needs:  # every check must pass before an image is built
+    - job: test_backend
+      artifacts: false
+    - job: test_frontend
+      artifacts: false
+    - job: audit_dependencies
+      artifacts: false
+  script:
+    - >
+      docker build
+      --build-arg BUILDKIT_INLINE_CACHE=1
+      --build-arg COMMIT_SHA="${CI_COMMIT_SHORT_SHA}"
+      --build-arg BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      --cache-from "${IMAGE_BASE}/frontend:${FLOAT_TAG}"
+      --tag "${IMAGE_BASE}/frontend:${FLOAT_TAG}"
+      --tag "${IMAGE_BASE}/frontend:${CI_COMMIT_SHORT_SHA}"
+      --label "project=omnicat"
+      --label "service=frontend"
+      --label "git.commit=${CI_COMMIT_SHA}"
+      --label "git.branch=${CI_COMMIT_REF_NAME}"
+      --file frontend/Dockerfile
+      frontend
+    - docker push "${IMAGE_BASE}/frontend:${FLOAT_TAG}"
+    - docker push "${IMAGE_BASE}/frontend:${CI_COMMIT_SHORT_SHA}"

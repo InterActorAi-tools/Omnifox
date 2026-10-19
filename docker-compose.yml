@@ -1,0 +1,89 @@
+# Container logs are capped (5 x 50 MB per service) so they are rotated
+# within the data-retention promise instead of growing forever.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  omnicat-staging:
+    image: ${BACKEND_IMAGE:-containers.in2-comms.com/bahr/omnicat/backend:staging}
+    container_name: omnicat-staging
+    restart: unless-stopped
+    depends_on:
+      omnicat-staging-db:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:?DATA_ENCRYPTION_KEY is required (see CHANGES.md)}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - EXPORTCOMMENTS_API_KEY=${EXPORTCOMMENTS_API_KEY}
+      - FIRST_ADMIN_EMAIL=${FIRST_ADMIN_EMAIL:-}
+      - FIRST_ADMIN_PASSWORD=${FIRST_ADMIN_PASSWORD:-}
+      - FIRST_ADMIN_NAME=${FIRST_ADMIN_NAME:-Super Admin}
+      - ENVIRONMENT=${ENVIRONMENT:-staging}
+      - DEBUG=${DEBUG:-False}
+      - CORS_ORIGINS=${CORS_ORIGINS:?CORS_ORIGINS is required}
+      - FRONTEND_URL=${FRONTEND_URL:?FRONTEND_URL is required}
+      - APP_PORT=8000
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
+      - GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-120}
+    volumes:
+      - /data/omnicat-staging/uploads:/app/uploads
+      - /data/omnicat-staging/cache:/app/cache
+    networks:
+      - in2-network
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 1g
+    logging: *logging
+
+  omnicat-web-staging:
+    image: ${FRONTEND_IMAGE:-containers.in2-comms.com/bahr/omnicat/frontend:staging}
+    container_name: omnicat-web-staging
+    restart: unless-stopped
+    depends_on:
+      - omnicat-staging
+    environment:
+      - API_URL=${PUBLIC_API_URL}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+    networks:
+      - in2-network
+    mem_limit: 256m
+    logging: *logging
+
+  omnicat-staging-db:
+    image: postgres:18.1
+    container_name: omnicat-staging-db
+    restart: unless-stopped
+    # No host port: DB reachable only via in2-network bridge.
+    # For ops access use `docker exec omnicat-staging-db psql ...`.
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-omnicat_staging}
+    volumes:
+      - /data/omnicat-staging/postgres:/var/lib/postgresql
+    networks:
+      - in2-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB:-omnicat_staging}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    mem_limit: 1g
+    logging: *logging
+
+networks:
+  in2-network:
+    external: true

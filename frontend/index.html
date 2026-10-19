@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link rel="icon" href="/favicon.ico" />
+        <!--
+          H8: /config.js is loaded as a normal script tag. The previous
+          inline injection (legacy XSS gadget that blocks strict CSP)
+          added `?v=<timestamp>` for cache-busting, but nginx already
+          serves /config.js with
+          `Cache-Control: no-store, no-cache, must-revalidate`
+          (see nginx.conf `location = /config.js`), so the query-param
+          buster was redundant.
+        -->
+        <script src="/config.js"></script>
+        <title>OmniCat</title>
+    </head>
+    <body>
+        <div id="root"></div>
+        <script type="module" src="/src/main.jsx"></script>
+    </body>
+</html>

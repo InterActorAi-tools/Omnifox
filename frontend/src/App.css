@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+.main {
+  width: 100vw;
+  min-height: 100vh;
+  position: fixed;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 120px 24px 160px 24px;
+  pointer-events: none;
+  z-index: 1; 
+}
+
+.background_main {
+  background-image: url('./assets/background.webp');
+  background-size: cover; /* Ensures the image covers the entire div */
+  background-position: center; /* Centers the image */
+  background-repeat: no-repeat; /* Prevents repeating */
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1; /* Ensures it stays behind the content */
+}
+
+@media screen and (max-width: 640px) {
+  .main {
+    padding: 0;
+  }
+}
+
+/* Tailwind Styles */
+
+.app {
+  @apply relative z-10 flex justify-center items-center flex-col max-w-7xl mx-auto sm:px-16 px-6;
+}
+
+/* Visible keyboard focus on every interactive element (WCAG 2.4.7). */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid #2E7D38;
+  outline-offset: 2px;
+}
+
+/* Keep focused elements clear of the sticky headers (WCAG 2.4.11).
+   Chrome ignores scroll-padding when scrolling to a focused element but
+   honours scroll-margin on the element itself. */
+html {
+  scroll-padding-top: 6rem;
+}
+:where(a, button, input, select, textarea, [tabindex]) {
+  scroll-margin-top: 6rem;
+}
+
+/* First focusable element on every page (WCAG 2.4.1); visible on focus. */
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -100px;
+  z-index: 200;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #1f2937;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.2);
+}
+.skip-link:focus {
+  top: 1rem;
+}
