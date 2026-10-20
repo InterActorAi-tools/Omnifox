@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { authService, clearAuthStorage } from '../services/authService';
-import { logo } from '../assets';
+import { wordmark } from '../assets';
 import { AiOutlineUser, AiOutlineLogout, AiOutlineDashboard } from 'react-icons/ai';
 
 const Navbar = ({ user }) => {
@@ -28,8 +28,7 @@ const Navbar = ({ user }) => {
       
       {/* Left Side: Logo and Title */}
       <Link to="/app" aria-label="OmniFox home" className="flex items-center gap-2 sm:gap-3 min-w-0 rounded-lg">
-        <img src={logo} alt="" className="w-8 h-8 sm:w-10 sm:h-10 object-contain rounded-full shrink-0"/>
-        <span className="hidden sm:block text-lg sm:text-xl font-bold text-gray-800 truncate">OMNIFOX</span>
+        <img src={wordmark} alt="OmniFox" className="h-6 sm:h-8 w-auto object-contain shrink-0"/>
       </Link>
       
       {/* Right Side: User Info and Action Buttons */}
