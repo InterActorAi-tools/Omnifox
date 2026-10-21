@@ -234,7 +234,11 @@ class TestRefreshReuseDetection:
             db.add(other)
             db.commit()
 
-            # Now replay the original (already-revoked) token.
+            # Now replay the original (already-revoked) token, after the
+            # grace window for browser races has passed.
+            old_row = db.query(RefreshToken).filter(RefreshToken.token_hash == hash_token(old_refresh)).one()
+            old_row.last_used = datetime.utcnow() - timedelta(minutes=5)
+            db.commit()
             with pytest.raises(HTTPException) as exc:
                 await refresh_tokens(
                     request=_fake_request(),
@@ -250,6 +254,32 @@ class TestRefreshReuseDetection:
                 RefreshToken.user_id == seeded_user
             ).count()
             assert remaining == 0
+        finally:
+            db.close()
+
+
+    @pytest.mark.asyncio
+    async def test_replay_within_grace_window_rotates_again(
+        self, isolated_db, seeded_user, seeded_session
+    ):
+        """Two tabs refreshing with the same cookie: both succeed, nobody is logged out."""
+        from models import RefreshToken
+        from routers.auth import refresh_tokens
+        from schemas.auth import RefreshTokenRequest
+
+        old_refresh, _ = seeded_session
+        db = isolated_db()
+        try:
+            for _ in range(2):
+                await refresh_tokens(
+                    request=_fake_request(),
+                    response=_fake_response(),
+                    db=db,
+                    token_data=RefreshTokenRequest(refresh_token=old_refresh),
+                )
+            active = db.query(RefreshToken).filter(
+                RefreshToken.user_id == seeded_user, RefreshToken.is_revoked.is_(False)).count()
+            assert active == 2
         finally:
             db.close()
 

@@ -205,6 +205,12 @@ class TestRefreshFromCookie:
         assert new_access and new_access != old_access
         assert new_refresh and new_refresh != old_refresh
 
+    def test_refresh_with_empty_json_body_uses_cookie(self, client):
+        # The frontend posts {} - that must not fail validation (422).
+        _login(client)
+        resp = client.post("/api/auth/refresh", json={})
+        assert resp.status_code == 200, resp.text
+
     def test_refresh_without_cookie_or_body_is_401(self, client):
         # No login, no body. Must be 401.
         resp = client.post("/api/auth/refresh")

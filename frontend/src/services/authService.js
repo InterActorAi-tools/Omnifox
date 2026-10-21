@@ -23,6 +23,15 @@ const readCsrfCookie = () => {
     return match ? decodeURIComponent(match[1]) : "";
 };
 
+// The backend's error text for a failed request. FastAPI sends validation
+// errors (422) as a list of objects; rendering that list would crash React.
+export const errorMessage = (err, fallback) => {
+    const detail = err?.response?.data?.detail;
+    if (typeof detail === "string") return detail;
+    if (Array.isArray(detail) && detail.length) return detail.map((d) => d?.msg).filter(Boolean).join(" ") || fallback;
+    return fallback;
+};
+
 // Create a single axios instance with interceptors.
 // withCredentials:true is mandatory for the browser to send the
 // HttpOnly auth cookies on cross-origin requests; same-origin would
@@ -75,6 +84,12 @@ const AUTH_ENDPOINTS = [
     "/auth/reset-password",
 ];
 
+// Clear the local user cache and go to the login page.
+export const endSession = () => {
+    clearAuthStorage();
+    window.location.href = "/login";
+};
+
 // Share one in-flight refresh. The backend rotates refresh tokens and
 // treats a replayed one as theft, so parallel refreshes after the access
 // token expires would log the user out of every session.
@@ -110,19 +125,19 @@ api.interceptors.response.use(
                 await refreshSession();
                 return api(originalRequest);
             } catch (refreshError) {
-                clearAuthStorage();
-                window.location.href = "/login";
+                // Only a refused refresh ends the session. A network error
+                // or a 502 during a deploy must not log the user out.
+                if (refreshError.response?.status === 401) {
+                    endSession();
+                }
                 return Promise.reject(refreshError);
             }
         }
 
-        // 401 (unauth) or 403 (CSRF / RBAC) - clear local cache and
-        // redirect to login. The cookies themselves are cleared by
-        // the backend on /auth/logout or by the browser on session
-        // expiry.
-        if (error.response?.status === 401 || error.response?.status === 403) {
-            clearAuthStorage();
-            window.location.href = "/login";
+        // Still 401 after a successful refresh: the session is gone. A 403
+        // (permission, CSRF) is shown by the caller and keeps the session.
+        if (error.response?.status === 401) {
+            endSession();
         }
 
         return Promise.reject(error);
@@ -146,7 +161,7 @@ export const authService = {
 
     async login(email, password) {
         const response = await api.post("/auth/login", { email, password });
-        if (response.data?.user) {
+        if (response.data?.user && !response.data.requires_2fa) {
             localStorage.setItem("user", JSON.stringify(response.data.user));
         }
         return response.data;
@@ -205,7 +220,7 @@ export const authService = {
 
     async googleLogin(credential) {
         const response = await api.post("/auth/google", { credential });
-        if (response.data?.user) {
+        if (response.data?.user && !response.data.requires_2fa) {
             localStorage.setItem("user", JSON.stringify(response.data.user));
         }
         return response.data;

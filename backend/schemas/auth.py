@@ -21,7 +21,7 @@ class TwoFactorVerify(BaseModel):
     code: str
 
 class RefreshTokenRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str | None = None  # browsers send {} and use the cookie
 
 # Response schemas
 class UserResponse(BaseModel):

@@ -46,6 +46,9 @@ class Verify2FARequest(BaseModel):
     code: str
 
 
+REFRESH_REUSE_GRACE_SECONDS = 30
+
+
 def _is_future(dt: datetime | None) -> bool:
     """Compare a DB timestamp against now. Postgres returns tz-aware
     values while SQLite returns naive UTC, so normalize before comparing."""
@@ -662,7 +665,12 @@ async def refresh_tokens(
     # another tab) OR an attacker stole and is replaying a token whose
     # rotation already happened. We cannot tell which, so the safe action
     # is to nuke every refresh token for this user.
-    if stored_token.is_revoked:
+    # A token rotated seconds ago is the browser racing itself (two tabs
+    # refreshing at once, a response lost to a reload or network drop), not
+    # theft: rotate again instead of logging every device out.
+    just_rotated = stored_token.last_used is not None and _is_future(
+        stored_token.last_used + timedelta(seconds=REFRESH_REUSE_GRACE_SECONDS))
+    if stored_token.is_revoked and not just_rotated:
         # Cache the user_id BEFORE the bulk delete: SQLAlchemy expires the
         # instance on commit and re-reading attributes from the deleted
         # row raises ObjectDeletedError.

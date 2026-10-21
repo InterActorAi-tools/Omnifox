@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 const Graphs = lazy(() => import("./Graphs"));
 import AnalysisChat from "./AnalysisChat";
 import { useSearchParams } from "react-router-dom";
-import { authService, clearAuthStorage, notifyResultsChanged, RESULTS_CHANGED } from "../services/authService";
+import { authService, endSession, notifyResultsChanged, RESULTS_CHANGED } from "../services/authService";
 
 const Demo = ({ user }) => {
     // ✅ ALL STATE HOOKS
@@ -41,6 +41,8 @@ const Demo = ({ user }) => {
     const progressStateRef = useRef(0); // tracks real progress without stale closure
     const eventSourceRef = useRef(null);
     const tokenRefreshIntervalRef = useRef(null);
+    const reconnectTimerRef = useRef(null);
+    const unmountedRef = useRef(false);
 
     const API_URL = window.APP_CONFIG?.API_URL || "";
     // All backend routes live under /api (NPM forwards /api to the backend).
@@ -90,16 +92,12 @@ const Demo = ({ user }) => {
             try {
                 await authService.refreshTokens();
                 response = await fetch(url, buildOpts());
-            } catch {
-                clearAuthStorage();
-                window.location.href = "/login";
+            } catch (refreshError) {
+                // Only a refused refresh ends the session (not a network error or 502).
+                if (refreshError.response?.status === 401) endSession();
                 return response;
             }
-        }
-
-        if (response.status === 403) {
-            clearAuthStorage();
-            window.location.href = "/login";
+            if (response.status === 401) endSession();
         }
 
         return response;
@@ -236,16 +234,12 @@ const Demo = ({ user }) => {
             // Server signals timeout — reconnect automatically by creating a new EventSource
             if (data === "timeout") {
                 evtSource.close();
-                setTimeout(() => pollTaskStatus(taskId, taskType), 500);
+                reconnectTimerRef.current = setTimeout(() => pollTaskStatus(taskId, taskType), 500);
                 return;
             }
-            if (data === "-1") {
-                setUploadStatus("Processing failed.");
-                setIsProcessing(false);
-                setIsUploading(false);
-                stopTokenRefreshInterval();
-                localStorage.removeItem(`omnifox_active_task_${clientId}`);
+            if (data === "-1" || data === "cancelled") {
                 evtSource.close();
+                stopWaiting(data === "cancelled" ? "The analysis was cancelled." : "Processing failed.");
                 return;
             }
 
@@ -271,8 +265,34 @@ const Demo = ({ user }) => {
         };
 
         evtSource.onerror = () => {
-            // Browser reconnects automatically; no action needed
+            // The browser retries dropped connections by itself, but gives up
+            // (CLOSED) on an error response such as 401 after the access token
+            // expired (e.g. the laptop slept). Renew the session, then follow
+            // the task again - or show its result if it finished meanwhile.
+            if (evtSource.readyState !== EventSource.CLOSED) return;
+            reconnectTimerRef.current = setTimeout(async () => {
+                try {
+                    await authService.refreshTokens();
+                } catch (refreshError) {
+                    if (refreshError.response?.status === 401) return endSession();
+                }
+                if (unmountedRef.current || eventSourceRef.current !== evtSource) return;
+                const response = await authenticatedFetch(`${API_URL}/tasks/task_status/${taskId}`).catch(() => null);
+                const task = response?.ok ? await response.json() : null;
+                if (task?.status === "completed") fetchCompletedResults(taskId);
+                else if (task && ["extracting", "processing"].includes(task.status)) pollTaskStatus(taskId, taskType);
+                else stopWaiting(task?.status === "cancelled" ? "The analysis was cancelled." : "Lost track of the analysis. Check History for the result.");
+            }, 2000);
         };
+    };
+
+    // Stop showing progress for the current task and say why.
+    const stopWaiting = (message) => {
+        setUploadStatus(message);
+        setIsProcessing(false);
+        setIsUploading(false);
+        stopTokenRefreshInterval();
+        localStorage.removeItem(`omnifox_active_task_${clientId}`);
     };
 
     const fetchCompletedResults = async (taskId) => {
@@ -297,11 +317,13 @@ const Demo = ({ user }) => {
                     localStorage.removeItem(`omnifox_active_task_${clientId}`);
 
                     notifyResultsChanged();
+                    return;
                 }
             }
+            stopWaiting("Completed, but the results could not be loaded. Check History for the result.");
         } catch (error) {
             console.error("Error fetching results:", error);
-            setUploadStatus("Completed but failed to fetch results");
+            stopWaiting("Completed, but the results could not be loaded. Check History for the result.");
         } finally {
             stopTokenRefreshInterval();
         }
@@ -381,6 +403,8 @@ const Demo = ({ user }) => {
                         })
                     );
                     setTimeout(() => pollTaskStatus(data.task_id, "file"), 1000);
+                } else {
+                    stopWaiting(data.message || "Error processing file.");
                 }
             } else {
                 setUploadStatus(await errorDetail(response, "Error processing file."));
@@ -443,6 +467,8 @@ const Demo = ({ user }) => {
                                 showResult(data.new_filename, { ...data, total_comments: data.comments_count || data.total_comments });
                                 setShowGraphs(true);
                                 notifyResultsChanged();
+                            } else {
+                                stopWaiting("The saved result is no longer available. Please run the analysis again.");
                             }
                         }, 1000);
                     } else if (data.task_id) {
@@ -458,7 +484,11 @@ const Demo = ({ user }) => {
                             })
                         );
                         setTimeout(() => pollTaskStatus(data.task_id, "url"), 1000);
+                    } else {
+                        stopWaiting(data.message || "Error processing URL.");
                     }
+                } else {
+                    stopWaiting(data.message || "Error processing URL.");
                 }
             } else if (response.status === 409) {
                 const errData = await response.json().catch(() => ({}));
@@ -632,6 +662,8 @@ const Demo = ({ user }) => {
         return () => {
             if (progressAnimationRef.current) clearInterval(progressAnimationRef.current);
             if (eventSourceRef.current) eventSourceRef.current.close();
+            clearTimeout(reconnectTimerRef.current);
+            unmountedRef.current = true;
             stopTokenRefreshInterval();
         };
     }, []);
@@ -898,9 +930,14 @@ const Demo = ({ user }) => {
                                         }
                                         stopTokenRefreshInterval();
 
-                                        await authenticatedFetch(`${API_URL}/tasks/cancel_task/${currentTaskId}`, {
+                                        const cancelResponse = await authenticatedFetch(`${API_URL}/tasks/cancel_task/${currentTaskId}`, {
                                             method: "POST",
                                         });
+                                        if (cancelResponse.status === 409) {
+                                            // It finished just before the click: show the result instead.
+                                            fetchCompletedResults(currentTaskId);
+                                            return;
+                                        }
 
                                         setIsProcessing(false);
                                         setIsUploading(false);
