@@ -16,7 +16,7 @@ import {
 } from "react-icons/ai";
 import EnhancedDashboard from "./EnhancedDashboard";
 import Modal from "./Modal";
-import { logo } from "../assets";
+import { wordmark } from "../assets";
 import { clearAuthStorage } from "../services/authService";
 
 // Reusable "Card" component for consistent look
@@ -304,9 +304,9 @@ export default function Dashboard() {
             <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                        <img src={logo} alt="" className="h-8 w-8 sm:h-10 sm:w-10 object-contain shrink-0" />
+                        <img src={wordmark} alt="OmniFox" className="h-6 sm:h-8 w-auto object-contain shrink-0" />
                         <div className="min-w-0">
-                            <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-none truncate">OmniFox Dashboard</h1>
+                            <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-none truncate">Dashboard</h1>
                         </div>
                     </div>
 

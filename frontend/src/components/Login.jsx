@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../services/authService';
 import { AiOutlineEye, AiOutlineEyeInvisible } from 'react-icons/ai';
-import { logo } from '../assets';
+import { wordmark } from '../assets';
 
 export default function Login({ onLoginSuccess }) {
   const navigate = useNavigate();
@@ -115,7 +115,7 @@ export default function Login({ onLoginSuccess }) {
         {show2FA ? (
           <>
             <div>
-              <img src={logo} alt="OmniFox Logo" className="w-20 h-20 mx-auto"/>
+              <img src={wordmark} alt="OmniFox" className="h-12 w-auto mx-auto"/>
               <h1 className="mt-4 text-center text-2xl sm:text-3xl font-extrabold text-gray-900">
                 Check Your Authenticator
               </h1>
@@ -159,7 +159,7 @@ export default function Login({ onLoginSuccess }) {
           /* Original Login Form */
           <>
             <div>
-              <img src={logo} alt="OmniFox Logo" className="w-20 h-20 mx-auto"/>
+              <img src={wordmark} alt="OmniFox" className="h-12 w-auto mx-auto"/>
               <h1 className="mt-4 text-center text-2xl sm:text-3xl font-extrabold text-gray-900">
                 Sign in to OMNIFOX
               </h1>
