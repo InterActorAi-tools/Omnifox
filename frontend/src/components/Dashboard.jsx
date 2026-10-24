@@ -13,6 +13,8 @@ import {
     AiOutlineAreaChart,
     AiOutlinePlus,
     AiOutlineFolder,
+    AiOutlineLock,
+    AiOutlineShareAlt,
 } from "react-icons/ai";
 import EnhancedDashboard from "./EnhancedDashboard";
 import Modal from "./Modal";
@@ -106,12 +108,17 @@ export default function Dashboard() {
 
     const isAdmin = user?.permissions?.includes("manage_users");
     const canViewAnalytics = user?.permissions?.includes("view_dashboard");
+    const canCreatePrivate = user?.permissions?.includes("create_private_projects");
+    const canManageProjects = isAdmin || canCreatePrivate;
 
     //Project state 
     const [projects, setProjects] = useState([]);
     const [showAddProject, setShowAddProject] = useState(false);
     const [newProjectName, setNewProjectName] = useState("");
     const [newProjectObjectives, setNewProjectObjectives] = useState("");
+    const [newProjectPrivate, setNewProjectPrivate] = useState(false);
+    const [sharingProject, setSharingProject] = useState(null);
+    const [shareEmails, setShareEmails] = useState("");
     const [modalConfig, setModalConfig] = useState(null); 
     const [confirmConfig, setConfirmConfig] = useState({ 
         isOpen: false, 
@@ -134,6 +141,9 @@ export default function Dashboard() {
             if (userData.permissions?.includes("manage_users")) {
                 loadAdminData();
             }
+            if (userData.permissions?.includes("manage_users") || userData.permissions?.includes("create_private_projects")) {
+                loadProjects();
+            }
         } catch (error) {
             console.error("Failed to load dashboard:", error);
         } finally {
@@ -143,17 +153,19 @@ export default function Dashboard() {
 
     const loadAdminData = async () => {
         try {
-            const [usersData, rolesData, projectsData] = await Promise.all([
+            const [usersData, rolesData] = await Promise.all([
                 api.get("/admin/users").then((res) => res.data),
                 api.get("/admin/roles").then((res) => res.data),
-                api.get("/projects").then((res) => res.data).catch(() => []), // Fails safely if no projects exist
             ]);
-            setProjects(projectsData);
             setUsers(usersData);
             setRoles(rolesData);
         } catch (error) {
             console.error("Failed to load admin data:", error);
         }
+    };
+
+    const loadProjects = async () => {
+        setProjects(await api.get("/projects").then((res) => res.data).catch(() => []));
     };
 
     // --- HANDLERS (Identical Logic, kept compact) ---
@@ -225,15 +237,36 @@ export default function Dashboard() {
     const handleAddProject = async (e) => {
         e.preventDefault();
         try {
-            await api.post("/projects", { name: newProjectName, objectives: newProjectObjectives.split("\n") });
+            // Only admins create shared projects; everyone else's are private.
+            const isPrivate = isAdmin ? newProjectPrivate : true;
+            await api.post("/projects", { name: newProjectName, objectives: newProjectObjectives.split("\n"), is_private: isPrivate });
             setNewProjectName("");
             setNewProjectObjectives("");
+            setNewProjectPrivate(false);
             setShowAddProject(false);
-            loadAdminData(); 
+            loadProjects();
             // 👇 Uses the fancy modal instead of alert()
             showModal("Project added successfully", "success"); 
         } catch (error) {
             showModal(errorMessage(error, "Failed to add project"), "error");
+        }
+    };
+
+    const openShareProject = (project) => {
+        setSharingProject(project);
+        setShareEmails(project.shared_with.join("\n"));
+    };
+
+    const handleShareProject = async (e) => {
+        e.preventDefault();
+        try {
+            const emails = shareEmails.split(/[\s,]+/).filter(Boolean);
+            await api.put(`/projects/${sharingProject.id}/shares`, { emails });
+            setSharingProject(null);
+            loadProjects();
+            showModal("Sharing updated", "success");
+        } catch (error) {
+            showModal(errorMessage(error, "Failed to update sharing"), "error");
         }
     };
 
@@ -259,8 +292,7 @@ export default function Dashboard() {
 
             await api.delete(url);
 
-            // ✅ FIX 2: Use loadAdminData() because loadProjects() doesn't exist
-            loadAdminData(); 
+            if (type === 'project') loadProjects(); else loadAdminData();
 
             showModal(`${type === 'project' ? "Project" : "User"} deleted successfully`, "success");
         } catch (error) {
@@ -339,7 +371,7 @@ export default function Dashboard() {
                     <nav aria-label="Dashboard sections" className="flex space-x-2 min-w-max p-1 bg-white/50 rounded-xl border border-gray-200/60 backdrop-blur-sm">
                         {[
                             { id: "analytics", label: "Analytics", icon: <AiOutlineAreaChart />, condition: canViewAnalytics },
-                            { id: "projects", label: "Projects", icon: <AiOutlineFolder />, condition: isAdmin },
+                            { id: "projects", label: "Projects", icon: <AiOutlineFolder />, condition: canManageProjects },
                             { id: "activity", label: "Audit Log", icon: <AiOutlineHistory />, condition: isAdmin },
                             { id: "users", label: "Team Members", icon: <AiOutlineUser />, condition: isAdmin },
                         ].map((tab) => {
@@ -378,11 +410,13 @@ export default function Dashboard() {
                     {activeTab === "activity" && isAdmin && <AuditLogTab />}
 
 {/* --- PROJECTS TAB (New) --- */}
-{activeTab === "projects" && isAdmin && (
+{activeTab === "projects" && canManageProjects && (
                         <>
                             <TabHeader
                                 title="Project Management"
-                                subtitle="Add or remove projects from the system."
+                                subtitle={isAdmin
+                                    ? "Add or remove shared projects. Private projects are visible only to their owner and the people they share with."
+                                    : "Your projects are private: only you and the people you share them with can see them."}
                                 action={
                                     <button
                                         onClick={() => setShowAddProject(!showAddProject)}
@@ -420,6 +454,16 @@ export default function Dashboard() {
                                                     placeholder={"e.g. Raise awareness of the vaccination drive\nBuild trust in the health ministry"}
                                                 />
                                             </div>
+                                            {isAdmin && canCreatePrivate && (
+                                                <label className="flex items-center gap-2 text-sm text-gray-700">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={newProjectPrivate}
+                                                        onChange={(e) => setNewProjectPrivate(e.target.checked)}
+                                                    />
+                                                    Private (only you and the people you share it with)
+                                                </label>
+                                            )}
                                             <button type="submit" className="w-full sm:w-auto px-4 py-2 bg-green-700 text-white rounded-lg font-medium hover:bg-green-800">
                                                 Create Project
                                             </button>
@@ -441,8 +485,14 @@ export default function Dashboard() {
                                                         <AiOutlineFolder size={20} />
                                                     </div>
                                                     <div>
-                                                        <p className="font-bold text-gray-900">{p.name}</p>
+                                                        <p className="font-bold text-gray-900 flex items-center gap-1">
+                                                            {p.name}
+                                                            {p.is_private && <AiOutlineLock className="text-gray-500" title="Private" aria-label="Private" />}
+                                                        </p>
                                                         <p className="text-xs text-gray-500">ID: {p.id}</p>
+                                                        {p.is_owner && p.shared_with.length > 0 && (
+                                                            <p className="text-xs text-gray-500">Shared with {p.shared_with.join(", ")}</p>
+                                                        )}
                                                         {p.objectives?.length > 0 && (
                                                             <ol className="mt-1 list-decimal list-inside text-sm text-gray-700">
                                                                 {p.objectives.map((o) => <li key={o}>{o}</li>)}
@@ -450,18 +500,62 @@ export default function Dashboard() {
                                                         )}
                                                     </div>
                                                 </div>
-                                                <button
-                                                    onClick={() => confirmDeleteProject(p.id)}
-                                                    className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                                    title="Delete Project"
-                                                        aria-label="Delete Project">
-                                                    <AiOutlineDelete size={20} />
-                                                </button>
+                                                <div className="flex items-center">
+                                                    {p.is_private && p.is_owner && (
+                                                        <button
+                                                            onClick={() => openShareProject(p)}
+                                                            className="p-2 text-gray-500 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                                                            title="Share Project"
+                                                            aria-label="Share Project">
+                                                            <AiOutlineShareAlt size={20} />
+                                                        </button>
+                                                    )}
+                                                    {(p.is_private ? p.is_owner : isAdmin) && (
+                                                        <button
+                                                            onClick={() => confirmDeleteProject(p.id)}
+                                                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                            title="Delete Project"
+                                                            aria-label="Delete Project">
+                                                            <AiOutlineDelete size={20} />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </li>
                                         ))
                                     )}
                                 </ul>
                             </DashboardCard>
+
+                            {sharingProject && (
+                                <Modal title={`Share ${sharingProject.name}`} onClose={() => setSharingProject(null)}>
+                                    <form onSubmit={handleShareProject}>
+                                        <label htmlFor="share-emails" className="block text-sm font-medium text-gray-700 mb-1">
+                                            Emails of the people who can see this project (one per line)
+                                        </label>
+                                        <textarea
+                                            id="share-emails"
+                                            rows={4}
+                                            value={shareEmails}
+                                            onChange={(e) => setShareEmails(e.target.value)}
+                                            className="w-full mb-6 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                            placeholder="colleague@in2-comms.com"
+                                        />
+                                        <div className="flex flex-col sm:flex-row gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSharingProject(null)}
+                                                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm sm:text-base">
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                className="flex-1 px-4 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 text-sm sm:text-base">
+                                                Save
+                                            </button>
+                                        </div>
+                                    </form>
+                                </Modal>
+                            )}
                         </>
                     )}
 

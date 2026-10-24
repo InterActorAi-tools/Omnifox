@@ -3,7 +3,7 @@ from .role import Role, Permission, role_permissions, user_roles
 from .refresh_token import RefreshToken
 from .activity_log import ActivityLog
 from .invitation import Invitation
-from .project import Project
+from .project import Project, project_shares
 from .usage_record import UsageRecord
 from .task import Task
 from .url_cache import UrlCacheEntry
@@ -19,6 +19,7 @@ __all__ = [
     "ActivityLog",
     "Invitation",
     "Project",
+    "project_shares",
     "UsageRecord",
     "Task",
     "UrlCacheEntry",

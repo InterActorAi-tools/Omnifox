@@ -10,7 +10,11 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import case, func
 
 from database import SessionLocal
+from models.project import Project
 from models.usage_record import UsageRecord
+
+# What dashboard viewers see instead of a private project's name.
+PRIVATE_PROJECT_LABEL = "Private project"
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +155,7 @@ class EnhancedAnalyticsService:
                 .filter(*in_range)
                 .all()
             )
+            private_names = {name for (name,) in db.query(Project.name).filter(Project.is_private == True)}  # noqa: E712
         finally:
             db.close()
 
@@ -170,15 +175,16 @@ class EnhancedAnalyticsService:
                 'time_series_data': [],
             }
 
-        project_totals = {
-            project: {
-                'total_comments': int(comments or 0),
-                'operations': int(operations),
-                'file_uploads': int(uploads or 0),
-                'url_extractions': int(operations) - int(uploads or 0),
-            }
-            for project, comments, operations, uploads in rows
-        }
+        project_totals = {}
+        for project, comments, operations, uploads in rows:
+            if project in private_names:
+                project = PRIVATE_PROJECT_LABEL
+            totals = project_totals.setdefault(project, {
+                'total_comments': 0, 'operations': 0, 'file_uploads': 0, 'url_extractions': 0})
+            totals['total_comments'] += int(comments or 0)
+            totals['operations'] += int(operations)
+            totals['file_uploads'] += int(uploads or 0)
+            totals['url_extractions'] += int(operations) - int(uploads or 0)
         total_comments = sum(t['total_comments'] for t in project_totals.values())
 
         project_stats = []

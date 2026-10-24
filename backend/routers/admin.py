@@ -39,6 +39,7 @@ async def get_all_users(
 async def update_user_roles(
     user_id: int,
     roles_data: UpdateUserRolesRequest,
+    request: Request,
     current_user: User = Depends(get_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -67,13 +68,16 @@ async def update_user_roles(
     
     db.commit()
     db.refresh(user)
-    
+    log_activity(db, current_user.id, "admin_roles_changed", request.client.host, None,
+                 {"target_email": user.email, "roles": user.get_role_names()})
+
     return UserResponse.from_user(user)
 
 # Delete user (Admin only)
 @router.delete("/users/{user_id}")
 async def delete_user(
     user_id: int,
+    request: Request,
     current_user: User = Depends(get_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -91,7 +95,9 @@ async def delete_user(
             detail="Cannot delete your own account"
         )
     
+    target_email = user.email
     delete_user_data(db, user, delete_account=True)
+    log_activity(db, current_user.id, "admin_user_deleted", request.client.host, None, {"target_email": target_email})
 
     return {"message": "User deleted successfully"}
 

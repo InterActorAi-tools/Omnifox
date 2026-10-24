@@ -48,6 +48,7 @@ PERMISSIONS: tuple[_PermissionDef, ...] = (
     _PermissionDef("create_reports", "Create new analysis reports"),
     _PermissionDef("manage_roles", "Manage roles and permissions"),
     _PermissionDef("view_activity_logs", "View system activity logs"),
+    _PermissionDef("create_private_projects", "Create private projects only they and people they share with can see"),
 )
 
 _ALL_PERMISSIONS = tuple(p.name for p in PERMISSIONS)
@@ -63,6 +64,11 @@ ROLES: tuple[_RoleDef, ...] = (
         "basic_user",
         "Basic website access",
         ("view_reports", "create_reports"),
+    ),
+    _RoleDef(
+        "project_manager",
+        "Private projects and reports",
+        ("view_dashboard", "view_reports", "create_reports", "create_private_projects"),
     ),
     _RoleDef("viewer", "Read-only access", ("view_reports",)),
 )

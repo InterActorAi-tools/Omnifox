@@ -16,7 +16,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from config import UPLOAD_FOLDER
-from models import ActivityLog, ChatMessage, Invitation, RefreshToken, Task, UrlCacheEntry, UsageRecord, User
+from models import ActivityLog, ChatMessage, Invitation, Project, RefreshToken, Task, UrlCacheEntry, UsageRecord, User, project_shares
+from simple_analytics import PRIVATE_PROJECT_LABEL
 from utils.crypto import read_file
 from utils.paths import safe_upload_path
 
@@ -67,6 +68,15 @@ def delete_result(db: Session, email: str, filename: str) -> bool:
     return found
 
 
+def delete_project(db: Session, project: Project) -> None:
+    """Delete a project. A private one's name also leaves the usage analytics."""
+    if project.is_private:
+        db.query(UsageRecord).filter(UsageRecord.project == project.name).update(
+            {UsageRecord.project: PRIVATE_PROJECT_LABEL}, synchronize_session=False)
+    db.delete(project)
+    db.commit()
+
+
 def delete_user_data(db: Session, user: User, delete_account: bool = False) -> None:
     """Erase everything held about a user. Usage counts stay, anonymised."""
     email = user.email
@@ -79,7 +89,11 @@ def delete_user_data(db: Session, user: User, delete_account: bool = False) -> N
     db.query(UsageRecord).filter(UsageRecord.client_id == email).update(
         {UsageRecord.client_id: ANONYMOUS}, synchronize_session=False)
     db.query(ActivityLog).filter(ActivityLog.user_id == user.id).delete(synchronize_session=False)
+    for project in db.query(Project).filter(Project.owner_id == user.id, Project.is_private == True).all():  # noqa: E712
+        delete_project(db, project)
     if delete_account:
+        db.execute(project_shares.delete().where(project_shares.c.user_id == user.id))
+        db.query(Project).filter(Project.owner_id == user.id).update({Project.owner_id: None}, synchronize_session=False)
         db.query(Invitation).filter(func.lower(Invitation.email) == email.lower()).delete(synchronize_session=False)
         db.delete(user)  # cascades to sessions and roles
     db.commit()
@@ -113,6 +127,12 @@ def export_user_data(db: Session, user: User) -> bytes:
         for u in db.query(UsageRecord).filter(UsageRecord.client_id == user.email).all()
     ]
 
+    projects = [
+        {"name": p.name, "objectives": p.objectives, "private": p.is_private,
+         "shared_with": [u.email for u in p.shared_with], "created_at": p.created_at}
+        for p in db.query(Project).filter(Project.owner_id == user.id).all()
+    ]
+
     chats = [
         {"result_file": m.filename, "role": m.role, "content": m.content, "created_at": m.created_at}
         for m in db.query(ChatMessage).filter(ChatMessage.client_id == user.email).order_by(ChatMessage.id).all()
@@ -121,7 +141,7 @@ def export_user_data(db: Session, user: User) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for name, data in [("profile", profile), ("sessions", sessions), ("activity", activity),
-                           ("analyses", tasks), ("usage", usage), ("chats", chats)]:
+                           ("analyses", tasks), ("usage", usage), ("chats", chats), ("projects", projects)]:
             zf.writestr(f"{name}.json", json.dumps(data, indent=2, default=str))
         folder = _user_folder(user.email)
         if folder and os.path.isdir(folder):

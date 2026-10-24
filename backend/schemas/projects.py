@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from datetime import datetime
 from typing import List
 
@@ -9,6 +9,7 @@ MAX_OBJECTIVE_LEN = 500
 class ProjectCreate(BaseModel):
     name: str
     objectives: List[str] = Field(default_factory=list)
+    is_private: bool = False
 
     @field_validator("name")
     @classmethod
@@ -28,12 +29,28 @@ class ProjectCreate(BaseModel):
             raise ValueError(f"Each objective must be at most {MAX_OBJECTIVE_LEN} characters")
         return value
 
+class ProjectShare(BaseModel):
+    emails: List[EmailStr] = Field(default_factory=list, max_length=50)
+
 # 2. Validation for READING a project (Output)
 class ProjectResponse(BaseModel):
     id: int
     name: str
     objectives: List[str] = []
+    is_private: bool = False
+    is_owner: bool = False
+    shared_with: List[str] = []  # emails; only filled in for the owner
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    @classmethod
+    def for_user(cls, project, user) -> "ProjectResponse":
+        is_owner = project.owner_id == user.id
+        return cls(
+            id=project.id,
+            name=project.name,
+            objectives=project.objectives or [],
+            is_private=project.is_private,
+            is_owner=is_owner,
+            shared_with=[u.email for u in project.shared_with] if is_owner else [],
+            created_at=project.created_at,
+        )

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from utils.dependencies import log_activity, require_client_ownership
+from routers.projects import require_project_access
 from models import User
 from cache_service import cache_service
 from services.export_service import ExportCommentsService
@@ -39,6 +40,7 @@ async def extract_comments_cached(
     """
     try:
         require_client_ownership(client_id, current_user)  # H5
+        require_project_access(db, current_user, payload.project)
         client_id = current_user.email  # canonical: never trust the case/spelling in the URL
         logger.info(f"User {current_user.id} processing a URL for project {payload.project}")
         if payload.post_context:
