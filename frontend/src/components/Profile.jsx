@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authService } from '../services/authService';
+import { authService, errorMessage } from '../services/authService';
 import { QRCodeCanvas } from 'qrcode.react';
 import { AiOutlineEye, AiOutlineEyeInvisible } from 'react-icons/ai';
 import AccountSecurity from './AccountSecurity';
@@ -45,7 +45,7 @@ export default function Profile() {
       setPasswordMessage(data.message);
       setPasswordData({ current_password: '', new_password: '' }); 
     } catch (err) {
-      setPasswordError(err.response?.data?.detail || 'An error occurred.');
+      setPasswordError(errorMessage(err, 'An error occurred.'));
     }
   };
 
@@ -60,7 +60,7 @@ export default function Profile() {
       setQrCode(data.qr_code_uri);
       setSecret(data.secret);
     } catch (err) {
-      setTwoFaError(err.response?.data?.detail || 'Failed to start 2FA setup.');
+      setTwoFaError(errorMessage(err, 'Failed to start 2FA setup.'));
     }
   };
 
@@ -80,9 +80,9 @@ export default function Profile() {
       setSecret('');
       setShowManualKey(false);
 
-      await authService.getCurrentUser();
+      setUser(await authService.getCurrentUser());
     } catch (err) {
-      setTwoFaError(err.response?.data?.detail || 'Invalid code. Please try again.');
+      setTwoFaError(errorMessage(err, 'Invalid code. Please try again.'));
     }
   };
 
@@ -96,7 +96,7 @@ export default function Profile() {
       await authService.getCurrentUser();
       window.location.reload(); 
     } catch (err) {
-      setTwoFaError(err.response?.data?.detail || 'Failed to disable 2FA. Check your password.');
+      setTwoFaError(errorMessage(err, 'Failed to disable 2FA. Check your password.'));
     }
   };
 
@@ -307,7 +307,7 @@ export default function Profile() {
                   <p className="text-sm text-green-700">2FA is currently enabled.</p>
                   <div>
                     <label htmlFor="disable-2fa-password" className="block text-sm font-medium text-gray-700">
-                      Enter Password to Disable
+                      {isGoogleUser ? 'Enter a current 2FA code to Disable' : 'Enter Password to Disable'}
                     </label>
                     <div className="relative mt-1">
                       <input
@@ -315,7 +315,7 @@ export default function Profile() {
                         type={showDisablePassword ? 'text' : 'password'}
                         autoComplete="current-password"
                         required
-                        placeholder="Your current password"
+                        placeholder={isGoogleUser ? 'Code from your authenticator app' : 'Your current password'}
                         className="block w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500"
                         value={disablePassword}
                         onChange={(e) => setDisablePassword(e.target.value)}

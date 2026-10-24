@@ -81,9 +81,9 @@ async def process_uploaded_file(
             raise HTTPException(status_code=422, detail="post_context exceeds 2048 characters")
 
         # Validate file extension
-        if not file.filename.lower().endswith(('.xlsx', '.xls')):
-            error_msg = f"Invalid file type: {file.filename}. Only .xlsx and .xls files are allowed."
-            raise HTTPException(status_code=400, detail=error_msg)
+        # .xlsx only: old .xls files need a reader (xlrd) that is not installed.
+        if not file.filename.lower().endswith('.xlsx'):
+            raise HTTPException(status_code=400, detail="Only Excel .xlsx files are supported. Please save the file as .xlsx and upload it again.")
         
         # Create unique filename
         timestamp = int(time.time())

@@ -124,8 +124,10 @@ async def disable_2fa(
             detail="2FA is not currently enabled."
         )
         
-    # Verify password
-    if not current_user.hashed_password or not verify_password(data.password, current_user.hashed_password):
+    # Password, or a current 2FA code (Google accounts have no password).
+    verified = (bool(current_user.hashed_password) and verify_password(data.password, current_user.hashed_password)) \
+        or verify_totp(current_user.two_factor_secret, data.password)
+    if not verified:
         log_activity(db, current_user.id, "2fa_disable_failed", request.client.host, request.headers.get("user-agent", "unknown"), {"reason": "invalid_password"})
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

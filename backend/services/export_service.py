@@ -16,7 +16,6 @@ from config import EXPORTCOMMENTS_API_KEY, UPLOAD_FOLDER
 from task_manager import TaskStatus, smooth_progress, user_error
 from utils.crypto import write_file
 from services.processing import ProcessingService
-from simple_analytics import simple_analytics
 from utils.url_safety import (
     PinnedResolver,
     UnsafeURLError,
@@ -587,7 +586,7 @@ class ExportCommentsService:
 
             result_data = await self.processing_service.process_file_contents(
                 file_path, client_id, extracted_filename, task_id, task_manager,
-                project, smooth_progress_callback, post_context
+                project, smooth_progress_callback, post_context, operation_type="url_extraction"
             )
 
             if result_data:
@@ -602,21 +601,6 @@ class ExportCommentsService:
                 }
 
                 cache_service.cache_url_processing(url_hash, result_data["new_filename"], sentiment_data)
-
-                try:
-                    comments_processed = result_data.get("total_comments", 0)
-                    logger.info(f"🔥 ANALYTICS: project={project}, comments={comments_processed}")
-
-                    simple_analytics.track_usage(
-                        project=project or "default",
-                        client_id=client_id,
-                        comments_count=comments_processed,
-                        operation_type="url_extraction"
-                    )
-
-                    logger.info("✅ Analytics tracked successfully for URL extraction")
-                except Exception as e:
-                    logger.error(f"Analytics tracking failed: {e}")
 
                 task_manager.update_task_status(
                     task_id, TaskStatus.COMPLETED,

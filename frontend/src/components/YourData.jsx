@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { authService, clearAuthStorage, downloadFile } from "../services/authService";
+import { authService, clearAuthStorage, downloadFile, errorMessage } from '../services/authService';
 import Modal from "./Modal";
 
 // What this browser keeps for the user (history, task resume state).
@@ -60,7 +60,7 @@ export default function YourData({ email }) {
             close();
             setStatus("All your data has been deleted.");
         } catch (err) {
-            setError(err.response?.data?.detail || "Something went wrong. Please try again.");
+            setError(errorMessage(err, "Something went wrong. Please try again."));
         } finally {
             setBusy(false);
         }

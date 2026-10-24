@@ -173,6 +173,7 @@ async def reply(db: Session, gemini: GeminiService, analysis: Analysis, text: st
     contents = [types.Content(role=m.role, parts=[types.Part.from_text(text=m.content["text"])])
                 for m in past[-CHAT_HISTORY_LIMIT:]]
     contents.append(types.Content(role="user", parts=[types.Part.from_text(text=text)]))
+    db.commit()  # end the read transaction: don't hold a pooled connection while the AI answers
     config = types.GenerateContentConfig(
         system_instruction=_system_instruction(analysis, records),
         tools=TOOLS,
@@ -228,6 +229,7 @@ async def apply_proposal(gemini: GeminiService, analysis: Analysis, proposal: Ch
                     rows.at[change["id"], "Sentiment Score"] = SCORE_FOR[change["to"]["sentiment"]]
                 rows.at[change["id"], "Sentiment"] = change["to"]["sentiment"]
                 rows.at[change["id"], "Category"] = change["to"]["category"]
+        analysis.db.commit()  # release the connection while the AI rewrites the summaries
         analysis.summaries = await gemini.summarize(analysis.records(), analysis.post_context)
     content["status"] = "applied"
     proposal.content = content

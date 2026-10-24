@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { authService } from "../services/authService";
+import { authService, errorMessage } from '../services/authService';
 
 const SUMMARY_LABELS = { overall: "Overall", positive: "Positive", neutral: "Neutral", negative: "Negative" };
 
@@ -108,7 +108,7 @@ export default function AnalysisChat({ filename, onUpdate }) {
         } catch (err) {
             setError(err.response?.status === 429
                 ? "Too many messages. Please wait a minute."
-                : err.response?.data?.detail || "The assistant could not answer. Please try again.");
+                : errorMessage(err, "The assistant could not answer. Please try again."));
         } finally {
             setBusy(false);
         }

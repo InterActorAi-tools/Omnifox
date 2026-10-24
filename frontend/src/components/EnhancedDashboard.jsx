@@ -402,20 +402,20 @@ const EnhancedDashboard = () => {
                                     <span className="font-medium text-green-800">Most Active Project:</span>
                                     <br />
                                     <span className="text-green-700 text-xs sm:text-sm">
-                                        {stats.project_breakdown[0]?.project} ({stats.project_breakdown[0]?.percentage}%)
+                                        {stats.project_breakdown[0] ? `${stats.project_breakdown[0].project} (${stats.project_breakdown[0].percentage}%)` : "None"}
                                     </span>
                                 </div>
                                 <div>
                                     <span className="font-medium text-green-800">Average per Project:</span>
                                     <br />
                                     <span className="text-green-700 text-xs sm:text-sm">
-                                        {Math.round(stats.total_comments_processed / stats.total_projects).toLocaleString()} comments
+                                        {Math.round(stats.total_comments_processed / (stats.total_projects || 1)).toLocaleString()} comments
                                     </span>
                                 </div>
                                 <div>
                                     <span className="font-medium text-green-800">Comments per Operation:</span>
                                     <br />
-                                    <span className="text-green-700 text-xs sm:text-sm">{Math.round(stats.total_comments_processed / stats.total_operations)} avg</span>
+                                    <span className="text-green-700 text-xs sm:text-sm">{Math.round(stats.total_comments_processed / (stats.total_operations || 1))} avg</span>
                                 </div>
                                 <div>
                                     <span className="font-medium text-green-800">Date Range:</span>

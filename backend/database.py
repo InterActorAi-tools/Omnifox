@@ -9,8 +9,10 @@ from config import settings  # ← Use main config
 
 logger = logging.getLogger(__name__)
 
-# SQLite-specific connection args
-connect_args = {"check_same_thread": False} if "sqlite" in settings.database_url else {}
+# SQLite-specific connection args. On Postgres, pin the session to UTC: the
+# app writes naive UTC datetimes into timestamptz columns, which Postgres
+# reads in the session time zone.
+connect_args = {"check_same_thread": False} if "sqlite" in settings.database_url else {"options": "-c timezone=UTC"}
 
 engine = create_engine(
     settings.database_url,

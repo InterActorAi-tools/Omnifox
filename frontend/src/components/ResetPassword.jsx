@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
-import { authService } from '../services/authService';
+import { authService, errorMessage } from '../services/authService';
 import { AiOutlineEye, AiOutlineEyeInvisible } from 'react-icons/ai';
 
 export default function ResetPassword() {
@@ -51,7 +51,7 @@ export default function ResetPassword() {
         navigate('/login');
       }, 3000);
     } catch (err) {
-      setError(err.response?.data?.detail || 'An error occurred. Your token may be invalid or expired.');
+      setError(errorMessage(err, 'An error occurred. Your token may be invalid or expired.'));
     } finally {
       setLoading(false);
     }

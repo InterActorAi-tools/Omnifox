@@ -88,9 +88,11 @@ class ProcessingService:
                                   base_filename: str, task_id: str = None, 
                                   task_manager=None, project: str = "default",
                                   progress_callback=None, post_context: str = None,
-                                  objectives: Optional[List[str]] = None) -> Dict[str, Any]:
+                                  objectives: Optional[List[str]] = None,
+                                  operation_type: str = "file_upload") -> Dict[str, Any]:
         """Process file contents with optional post context. Comments are also scored
-        against the project's campaign objectives (looked up when not given)."""
+        against the project's campaign objectives (looked up when not given).
+        Usage is recorded once, as `operation_type` (file_upload or url_extraction)."""
         try:
             if objectives is None:
                 objectives = await asyncio.to_thread(project_objectives, project)
@@ -133,7 +135,7 @@ class ProcessingService:
             # 🔥 Pass post_context to processing
             result_data = await self._process_comments_in_chunks_enhanced(
                 all_texts, metadata_df, client_id, base_filename, task_id, 
-                task_manager, project, progress_callback, post_context, objectives
+                task_manager, project, progress_callback, post_context, objectives, operation_type
             )
             
             return result_data
@@ -154,7 +156,8 @@ class ProcessingService:
                                                  client_id: str, base_filename: str, task_id: str = None,
                                                  task_manager=None, project: str = "default", 
                                                  progress_callback=None, post_context: str = None,
-                                                 objectives: List[str] = ()) -> Dict[str, Any]:
+                                                 objectives: List[str] = (),
+                                                 operation_type: str = "file_upload") -> Dict[str, Any]:
         """Process comments with optional post context"""
         total_comments = len(all_texts)
         self._processing_stats['last_batch_size'] = total_comments
@@ -215,7 +218,7 @@ class ProcessingService:
         
         final_results = await self._create_final_results_enhanced(
             all_texts, analyses, metadata_df, client_id, base_filename, project, task_id, task_manager, post_context,
-            objectives
+            objectives, operation_type
         )
         
         if task_manager and task_id:
@@ -234,7 +237,8 @@ class ProcessingService:
                                            metadata_df: Optional[pd.DataFrame],
                                            client_id: str, base_filename: str, project: str = "default",
                                            task_id: str = None, task_manager=None,
-                                           post_context: str = None, objectives: List[str] = ()) -> Dict[str, Any]:
+                                           post_context: str = None, objectives: List[str] = (),
+                                           operation_type: str = "file_upload") -> Dict[str, Any]:
         """Create final results with strict row filtering"""
         try:
             if task_manager and task_id and task_manager.is_task_cancelled(task_id):
@@ -390,7 +394,7 @@ class ProcessingService:
                     project=project or "default",
                     client_id=client_id,
                     comments_count=len(valid_rows),
-                    operation_type="file_upload"
+                    operation_type=operation_type
                 )
                 self._log_processing_milestone("✅ Analytics tracking successful", force_log=True)
             except Exception as e:

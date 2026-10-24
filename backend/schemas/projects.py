@@ -10,6 +10,14 @@ class ProjectCreate(BaseModel):
     name: str
     objectives: List[str] = Field(default_factory=list)
 
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Project name is required")
+        return value
+
     @field_validator("objectives")
     @classmethod
     def clean_objectives(cls, value: List[str]) -> List[str]:

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { authService } from "../services/authService";
+import { authService, errorMessage } from '../services/authService';
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 
 export default function Register({ onLoginSuccess }) {
@@ -82,7 +82,7 @@ export default function Register({ onLoginSuccess }) {
             onLoginSuccess();
             navigate("/app");
         } catch (err) {
-            setError(err.response?.data?.detail || "Registration failed");
+            setError(errorMessage(err, "Registration failed"));
         } finally {
             setLoading(false);
         }

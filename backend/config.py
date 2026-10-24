@@ -134,7 +134,8 @@ class Settings(BaseSettings):
         return self.log_level_production if self.is_production else self.log_level_development
     
     class Config:
-        env_file = ".env"
+        # No env_file: load_dotenv() above already loads .env, and pydantic
+        # reading it again would parse a comma-separated CORS_ORIGINS as JSON.
         case_sensitive = False
         extra = "ignore"
 

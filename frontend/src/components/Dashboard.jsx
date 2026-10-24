@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { authService } from "../services/authService";
+import { authService, errorMessage } from '../services/authService';
 import api from "../services/authService";
 import {
     AiOutlineArrowLeft,
@@ -170,7 +170,7 @@ export default function Dashboard() {
             // 👇 Uses the fancy modal instead of alert()
             showModal("Invitation link generated!", "success");
         } catch (error) {
-            showModal(error.response?.data?.detail || "Failed to generate invite", "error");
+            showModal(errorMessage(error, "Failed to generate invite"), "error");
         }
     };
 
@@ -232,8 +232,8 @@ export default function Dashboard() {
             loadAdminData(); 
             // 👇 Uses the fancy modal instead of alert()
             showModal("Project added successfully", "success"); 
-        } catch {
-            showModal("Failed to add project", "error");
+        } catch (error) {
+            showModal(errorMessage(error, "Failed to add project"), "error");
         }
     };
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { authService } from '../services/authService';
+import { authService, errorMessage } from '../services/authService';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -18,7 +18,7 @@ export default function ForgotPassword() {
       const data = await authService.forgotPassword(email);
       setMessage(data.message);
     } catch (err) {
-      setError(err.response?.data?.detail || 'An error occurred.');
+      setError(errorMessage(err, 'An error occurred.'));
     } finally {
       setLoading(false);
     }

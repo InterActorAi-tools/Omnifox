@@ -267,7 +267,6 @@ async def get_progress_stream(
     client_id: str,
     request: Request,
     task_id: str = None,
-    db: Session = Depends(get_db),
 ):
     """Stream task progress as Server-Sent Events.
 
@@ -284,14 +283,21 @@ async def get_progress_stream(
     stream to a specific task rather than relying on "most recent running
     task", which can flip on reconnect.
     """
-    user = authenticate_sse_cookie(request, db)
+    # Own short session: a request-scoped one would stay open (idle in
+    # transaction, holding a pooled connection) for the whole stream.
+    db = SessionLocal()
+    try:
+        user = authenticate_sse_cookie(request, db)
+        user_email = user.email
+    finally:
+        db.close()
 
     # The frontend addresses task streams by the user's email, so we accept
     # the request only when client_id matches. Compared case-insensitive so
     # browser URL casing differences don't accidentally lock a user out.
-    if client_id.lower() != user.email.lower():
+    if client_id.lower() != user_email.lower():
         raise HTTPException(status_code=403, detail="Forbidden")
-    client_id = user.email
+    client_id = user_email
 
     async def event_generator():
         last_sent = -1
@@ -307,8 +313,15 @@ async def get_progress_stream(
                     if task_id:
                         task = task_manager.get_task(task_id)
                         # Only stream tasks owned by this user.
-                        if task and task.client_id != user.email:
+                        if task and task.client_id != user_email:
                             task = None
+                        # Cancelled elsewhere, or deleted: tell the page to stop waiting.
+                        if not task:
+                            yield "data: -1\n\n"
+                            break
+                        if task.status == TaskStatus.CANCELLED:
+                            yield "data: cancelled\n\n"
+                            break
                         client_tasks = [task] if task else []
                         running_tasks = [task] if task and task.status in [TaskStatus.EXTRACTING, TaskStatus.PROCESSING] else []
                     else:

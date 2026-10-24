@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { authService } from '../services/authService';
+import { authService, errorMessage } from '../services/authService';
 import { AiOutlineEye, AiOutlineEyeInvisible } from 'react-icons/ai';
 import { wordmark } from '../assets';
 
@@ -61,11 +61,16 @@ export default function Login({ onLoginSuccess }) {
 
   const handleGoogleLogin = async (response) => {
     try {
-      await authService.googleLogin(response.credential);
+      const result = await authService.googleLogin(response.credential);
+      if (result.requires_2fa) {
+        setEmailFor2FA(result.user.email);
+        setShow2FA(true);
+        return;
+      }
       onLoginSuccess();
       navigate('/app');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Google login failed');
+      setError(errorMessage(err, 'Google login failed'));
     }
   };
 
@@ -86,7 +91,7 @@ export default function Login({ onLoginSuccess }) {
         navigate('/app');
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Login failed. Please check your credentials.');
+      setError(errorMessage(err, 'Login failed. Please check your credentials.'));
       setLoading(false); 
     }
   };
@@ -101,7 +106,7 @@ export default function Login({ onLoginSuccess }) {
       onLoginSuccess();
       navigate('/app');
     } catch (err) {
-      setError(err.response?.data?.detail || 'Invalid 2FA code.');
+      setError(errorMessage(err, 'Invalid 2FA code.'));
     } finally {
       setLoading(false);
     }

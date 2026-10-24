@@ -6,6 +6,7 @@ can be rotated without losing old data.
 """
 import json
 import os
+import re
 
 from cryptography.fernet import Fernet, MultiFernet
 from sqlalchemy.types import Text, TypeDecorator
@@ -13,6 +14,7 @@ from sqlalchemy.types import Text, TypeDecorator
 from config import settings
 
 _fernet = MultiFernet([Fernet(k.strip()) for k in settings.data_encryption_key.split(",") if k.strip()])
+_BASE64URL = re.compile(rb"[A-Za-z0-9_-]+={0,2}")
 
 
 def encrypt(data: bytes) -> bytes:
@@ -29,8 +31,13 @@ def rotate(token: bytes) -> bytes:
 
 
 def is_encrypted(data: bytes) -> bool:
-    # Every Fernet token starts with version byte 0x80, base64 "gAAAAA".
-    return data.startswith(b"gAAAAA")
+    """True for a Fernet token: base64 of version byte 0x80 + timestamp + IV +
+    AES blocks + HMAC. Checking the whole layout, not just the "gAAAAA"
+    prefix, keeps plain text such as a User-Agent from being mistaken for one."""
+    if not data.startswith(b"gAAAAA") or len(data) % 4 or not _BASE64URL.fullmatch(data):
+        return False
+    raw_len = len(data) // 4 * 3 - data[-2:].count(b"=")
+    return raw_len >= 73 and (raw_len - 57) % 16 == 0
 
 
 def write_file(path: str, data: bytes) -> None:
@@ -51,10 +58,9 @@ def encrypt_file_in_place(path: str) -> bool:
     """Encrypt a legacy plaintext file, keeping its age for retention.
     Returns False if it already was encrypted."""
     with open(path, "rb") as f:
-        if is_encrypted(f.read(6)):
-            return False
-        f.seek(0)
         data = f.read()
+    if is_encrypted(data):
+        return False
     modified = os.path.getmtime(path)
     write_file(path, data)
     os.utime(path, (modified, modified))

@@ -218,21 +218,13 @@ def create_excel_with_charts_enhanced(processed_data: pd.DataFrame, output_path:
         return False
 
 def sanitize_filename(filename: str) -> str:
-    """Sanitize filename for safe file system usage"""
+    """Sanitize filename for safe file system usage. ASCII only: upload paths
+    are validated against [A-Za-z0-9._@+-], so an Arabic or accented name
+    becomes "file.xlsx" instead of being rejected."""
     import re
-    
-    # Remove or replace invalid characters
-    sanitized = re.sub(r'[^\w\-_\.]', '_', filename)
-    
-    # Remove multiple underscores
-    sanitized = re.sub(r'_+', '_', sanitized)
-    
-    # Remove leading/trailing underscores
-    sanitized = sanitized.strip('_')
-    
-    # Ensure we have something left
-    if not sanitized or sanitized == '.':
-        sanitized = 'file'
-    
-    return sanitized
+
+    stem, ext = os.path.splitext(filename)
+    stem = re.sub(r'_+', '_', re.sub(r'[^A-Za-z0-9\-_.]', '_', stem)).strip('_.')
+    ext = re.sub(r'[^A-Za-z0-9.]', '', ext)
+    return (stem or 'file') + ext
 

@@ -308,7 +308,7 @@ async def process_cached_extraction_async(
         # Process the file with context
         result_data = await processing_service.process_file_contents(
             file_path, client_id, extracted_filename, task_id, task_manager,
-            project, None, post_context
+            project, None, post_context, operation_type="url_extraction"
         )
         
         if result_data:
@@ -339,7 +339,7 @@ async def process_cached_extraction_async(
                 }
             )
             
-        else:
+        elif not task_manager.is_task_cancelled(task_id):  # a cancel stays "cancelled"
             task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, "Processing failed")
             
     except Exception as e:
