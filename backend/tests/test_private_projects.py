@@ -101,3 +101,16 @@ def test_deleting_my_data_deletes_my_private_projects(app_client):
     with app_client.db() as db:
         delete_user_data(db, db.query(User).filter(User.email == "pm@example.com").one())
         assert db.query(Project).count() == 0
+
+
+def test_owner_deletes_own_private_project(app_client):
+    project = _create_private(app_client)
+    assert app_client.delete(f"/api/projects/{project['id']}").status_code == 200
+    assert "Secret campaign" not in _names(app_client)
+
+
+def test_admin_deletes_shared_project(app_client):
+    _login(app_client, "admin@example.com")
+    project = app_client.post("/api/projects", json={"name": "Team"}).json()
+    assert app_client.delete(f"/api/projects/{project['id']}").status_code == 200
+    assert "Team" not in _names(app_client)

@@ -9,7 +9,7 @@ from models import Project, User
 
 # Import schemas (Ensure you created schemas/projects.py as discussed)
 from schemas.projects import ProjectCreate, ProjectResponse, ProjectShare
-from services.privacy import delete_project
+from services import privacy
 
 # Import security dependency
 from utils.dependencies import find_user_by_email, get_current_user, log_activity
@@ -128,6 +128,6 @@ def delete_project(
         raise HTTPException(status_code=403, detail="You cannot delete this project")
 
     name = project.name
-    delete_project(db, project)
+    privacy.delete_project(db, project)
     log_activity(db, current_user.id, "project_deleted", request.client.host, None, {"project": name})
     return {"message": "Project deleted successfully"}
