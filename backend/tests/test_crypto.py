@@ -46,3 +46,17 @@ def test_legacy_scan_keeps_file_age_and_runs_once(tmp_path, monkeypatch):
     assert is_encrypted(old.read_bytes()) and os.path.getmtime(old) == 1_000_000
     (tmp_path / "a@example.com" / "new.xlsx").write_bytes(b"PK later")
     assert encrypt_legacy_files() == 0  # marker: the scan is not repeated on every boot
+
+
+def test_project_key_that_fits_moves_to_front():
+    import contextvars
+    from cryptography.fernet import Fernet
+    from utils import crypto
+
+    def run():
+        a, b = Fernet(Fernet.generate_key()), Fernet(Fernet.generate_key())
+        crypto.use_read_keys([a, b])
+        assert crypto.decrypt(b.encrypt(b"secret")) == b"secret"
+        assert crypto._read_keys.get() == (b, a)
+
+    contextvars.copy_context().run(run)  # keep the test's keys out of other tests

@@ -283,6 +283,8 @@ class GeminiService:
         
         # Paid tier rate limits
         self.max_concurrent = settings.max_concurrent_requests
+        # One limit for the whole process (every job, summary and chat), not one per job.
+        self._concurrency = asyncio.Semaphore(self.max_concurrent)
         self.requests_per_minute = 1800
 
         # Rate limiting: use a deque and a lock only for the mutation, not for sleeping.
@@ -334,13 +336,14 @@ class GeminiService:
         model = model or self.primary_model
         delay = 1.0
         for attempt in range(MAX_RETRIES):
-            await self._check_rate_limits()
             try:
-                loop = asyncio.get_running_loop()
-                return await loop.run_in_executor(
-                    _gemini_executor,
-                    lambda: self.client.models.generate_content(model=model, contents=contents, config=config),
-                )
+                # Count a request against the rate limit only once it has a slot.
+                async with self._concurrency:
+                    await self._check_rate_limits()
+                    return await asyncio.get_running_loop().run_in_executor(
+                        _gemini_executor,
+                        lambda: self.client.models.generate_content(model=model, contents=contents, config=config),
+                    )
             except Exception as e:
                 error = str(e).lower()
                 if model == self.primary_model and "not found" in error:
@@ -431,17 +434,15 @@ class GeminiService:
 
         results: Dict[int, Dict] = {}
         done = 0
-        sem = asyncio.Semaphore(self.max_concurrent)
 
         async def run(batch):
             nonlocal done
-            async with sem:
-                pending = batch
-                for _ in range(MAX_RETRIES):
-                    results.update(await self._classify_batch(pending, context, objectives))
-                    pending = [item for item in pending if item[0] not in results]
-                    if not pending:
-                        break
+            pending = batch
+            for _ in range(MAX_RETRIES):
+                results.update(await self._classify_batch(pending, context, objectives))
+                pending = [item for item in pending if item[0] not in results]
+                if not pending:
+                    break
             done += len(batch)
             if progress_callback:
                 progress_callback(done, len(unique))  # may raise CancelledError

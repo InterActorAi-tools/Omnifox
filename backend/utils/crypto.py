@@ -39,12 +39,21 @@ def encrypt(data: bytes) -> bytes:
 
 
 def decrypt(token: bytes) -> bytes:
-    """Raises InvalidToken if neither the server nor an unlocked project key fits."""
-    for key in (_fernet, *_read_keys.get()):
+    """Raises InvalidToken if neither the server nor an unlocked project key fits.
+    A project key that fits moves to the front: rows read together are usually one project's."""
+    try:
+        return _fernet.decrypt(token)
+    except InvalidToken:
+        pass
+    keys = _read_keys.get()
+    for i, key in enumerate(keys):
         try:
-            return key.decrypt(token)
+            data = key.decrypt(token)
         except InvalidToken:
-            pass
+            continue
+        if i:
+            _read_keys.set((key, *keys[:i], *keys[i + 1:]))
+        return data
     raise InvalidToken
 
 
