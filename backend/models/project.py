@@ -25,6 +25,7 @@ class Project(Base):
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     owner = relationship("User")
     shared_with = relationship("User", secondary=project_shares)
+    snapshots = relationship("ProjectSnapshot", cascade="all, delete-orphan")
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

@@ -12,7 +12,8 @@ import pandas as pd
 from sqlalchemy.orm import Session
 
 from config import UPLOAD_FOLDER
-from models import Task, UrlCacheEntry
+from models import ProjectSnapshot, Task, UrlCacheEntry
+from services.trends import snapshot_stats
 from utils.crypto import read_file
 from utils.file_utils import create_excel_with_charts_enhanced
 from utils.paths import safe_upload_path
@@ -70,6 +71,8 @@ class Analysis:
         update.update({v: self.summaries[k] for k, v in SUMMARY_KEYS.items()})
         if self.task:
             self.task.result_data = {**(self.task.result_data or {}), **update}
+            for snapshot in self.db.query(ProjectSnapshot).filter(ProjectSnapshot.task_id == self.task.task_id).all():
+                snapshot.stats = snapshot_stats(self.task.result_data)
         for entry in self.db.query(UrlCacheEntry).filter(
             UrlCacheEntry.client_id == self.email,
             UrlCacheEntry.processed_filename == self.filename,

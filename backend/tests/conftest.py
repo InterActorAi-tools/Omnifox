@@ -91,13 +91,14 @@ def app_client(monkeypatch, tmp_path):
     import cache_service
     import simple_analytics
     import task_manager
+    from services import trends
 
     engine = create_engine(f"sqlite:///{tmp_path / 'app.db'}", connect_args={"check_same_thread": False})
     TestSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     database.Base.metadata.create_all(bind=engine)
     monkeypatch.setattr(database, "engine", engine)
     monkeypatch.setattr(database, "SessionLocal", TestSession)
-    for module in (simple_analytics, task_manager, cache_service):
+    for module in (simple_analytics, task_manager, cache_service, trends):
         monkeypatch.setattr(module, "SessionLocal", TestSession)
 
     from bootstrap import ensure_permissions, ensure_roles

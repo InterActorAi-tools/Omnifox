@@ -31,6 +31,9 @@ class FakeGemini:
         return {"overall": "overall summary", "positive": "pos summary", "neutral": "neu summary", "negative": "neg summary"}
 
 
+snapshots = []
+
+
 @pytest.fixture
 def pipeline(tmp_path, monkeypatch):
     import services.processing as processing
@@ -39,6 +42,7 @@ def pipeline(tmp_path, monkeypatch):
     monkeypatch.setattr(processing, "UPLOAD_FOLDER", str(tmp_path))
     monkeypatch.setattr(simple_analytics.simple_analytics, "track_usage", lambda **kwargs: None)
     monkeypatch.setattr(processing, "project_objectives", lambda project: [])
+    monkeypatch.setattr(processing, "record_snapshot", lambda *args: snapshots.append(args))
     service = processing.ProcessingService()
     service.gemini_service = FakeGemini()
 
@@ -138,6 +142,7 @@ async def test_comments_are_scored_against_campaign_objectives(pipeline):
     assert {"Objective 1 Stance", "Objective 1 Alignment", "Objective 2 Stance", "Objective 2 Alignment"} <= set(header)
     assert [c.value for c in workbook["Objectives"][1]][:2] == ["Objective", "Relevant Comments"]
     assert workbook["Objectives"].cell(row=3, column=1).value == objectives[1]
+    assert snapshots[-1][2] is result  # the upload is kept for the project's trends
 
 
 @pytest.mark.asyncio

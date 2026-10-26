@@ -23,6 +23,7 @@ from database import SessionLocal
 from models import Project
 from task_manager import TaskStatus, smooth_progress, user_error
 from services.gemini_service import get_gemini
+from services.trends import record_snapshot
 from utils.file_utils import read_and_clean_excel_enhanced, create_excel_with_charts_enhanced
 
 logger = logging.getLogger(__name__)
@@ -384,6 +385,11 @@ class ProcessingService:
             if settings.debug:
                 logger.info(f"📋 Final columns: {list(processed_data.columns)}")
             self._log_processing_milestone(f"✅ Success rate: {result_data['success_rate']}%", force_log=True)
+
+            try:
+                await asyncio.to_thread(record_snapshot, project, task_id, result_data)
+            except Exception as e:
+                logger.error(f"❌ Saving the project trends snapshot failed: {e}")
 
             # 🔥 ANALYTICS TRACKING FIX: Removed user_id from call
             try:

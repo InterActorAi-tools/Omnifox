@@ -15,9 +15,11 @@ import {
     AiOutlineFolder,
     AiOutlineLock,
     AiOutlineShareAlt,
+    AiOutlineLineChart,
 } from "react-icons/ai";
 import EnhancedDashboard from "./EnhancedDashboard";
 import Modal from "./Modal";
+import ProjectTrends from "./ProjectTrends";
 import { wordmark } from "../assets";
 import { clearAuthStorage } from "../services/authService";
 
@@ -118,6 +120,7 @@ export default function Dashboard() {
     const [newProjectObjectives, setNewProjectObjectives] = useState("");
     const [newProjectPrivate, setNewProjectPrivate] = useState(false);
     const [sharingProject, setSharingProject] = useState(null);
+    const [trendsProject, setTrendsProject] = useState(null);
     const [shareEmails, setShareEmails] = useState("");
     const [modalConfig, setModalConfig] = useState(null); 
     const [confirmConfig, setConfirmConfig] = useState({ 
@@ -501,6 +504,13 @@ export default function Dashboard() {
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center">
+                                                    <button
+                                                        onClick={() => setTrendsProject(p)}
+                                                        className="p-2 text-gray-500 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                                                        title="Trends"
+                                                        aria-label="Trends">
+                                                        <AiOutlineLineChart size={20} />
+                                                    </button>
                                                     {p.is_private && p.is_owner && (
                                                         <button
                                                             onClick={() => openShareProject(p)}
@@ -525,6 +535,8 @@ export default function Dashboard() {
                                     )}
                                 </ul>
                             </DashboardCard>
+
+                            {trendsProject && <ProjectTrends project={trendsProject} onClose={() => setTrendsProject(null)} />}
 
                             {sharingProject && (
                                 <Modal title={`Share ${sharingProject.name}`} onClose={() => setSharingProject(null)}>

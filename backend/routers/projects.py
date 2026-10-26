@@ -10,6 +10,7 @@ from models import Project, User
 # Import schemas (Ensure you created schemas/projects.py as discussed)
 from schemas.projects import ProjectCreate, ProjectResponse, ProjectShare
 from services import privacy
+from services.trends import project_trends
 
 # Import security dependency
 from utils.dependencies import find_user_by_email, get_current_user, log_activity
@@ -112,6 +113,15 @@ def share_project(
     log_activity(db, current_user.id, "project_shared", request.client.host, None,
                  {"project": project.name, "shared_with": [u.email for u in users]})
     return ProjectResponse.for_user(project, current_user)
+
+@router.get("/{project_id}/trends")
+def get_project_trends(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """How sentiment and each objective change across the project's uploads."""
+    return project_trends(_visible_project(db, current_user, project_id))
 
 # 4. DELETE PROJECT (Used by Admin Dashboard)
 @router.delete("/{project_id}")
