@@ -1,4 +1,5 @@
 """URL extraction pipeline behind POST /api/process_url (see main.py)."""
+import asyncio
 import logging
 import uuid
 from fastapi import HTTPException, BackgroundTasks, Request
@@ -353,3 +354,64 @@ async def process_cached_extraction_async(
         )
     finally:
         db.close()
+
+
+def _save_queue(queue_id: str, items: list, finished: bool = False):
+    """Store the queue's per-link state on its task row; also keeps the row fresh for fail_stale_tasks."""
+    done = sum(item["status"] not in ("queued", "running") for item in items)
+    if task_manager.is_task_cancelled(queue_id):
+        status = TaskStatus.CANCELLED
+    else:
+        status = TaskStatus.COMPLETED if finished else TaskStatus.PROCESSING
+    task = task_manager.get_task(queue_id)
+    task_manager.update_task_status(
+        queue_id, status, int(100 * done / len(items)), f"{done} of {len(items)} links done",
+        metadata={**task.metadata, "items": items},
+    )
+
+
+async def run_url_queue(queue_id: str, client_id: str, user_id: int, payload: URLRequest, urls: list, request: Request):
+    """
+    BACKGROUND TASK: run each queued URL through the normal pipeline, one after another.
+    Started by POST /api/process_url_queue (see main.py).
+    """
+    items = [{"url": url, "status": "queued"} for url in urls]
+    for item in items:
+        if task_manager.is_task_cancelled(queue_id):
+            break
+        item["status"] = "running"
+        _save_queue(queue_id, items)
+        db: Session = next(get_db())
+        try:
+            user = db.get(User, user_id)
+            jobs = BackgroundTasks()
+            result = await extract_comments_cached(
+                client_id, payload.model_copy(update={"url": item["url"]}), jobs, request, user, db
+            )
+            item["task_id"] = result.get("task_id")
+            run = asyncio.ensure_future(jobs())
+            while not run.done():
+                await asyncio.wait({run}, timeout=10)
+                if task_manager.is_task_cancelled(queue_id) and item["task_id"]:
+                    task_manager.cancel_task(item["task_id"])
+                _save_queue(queue_id, items)
+            await run
+
+            task = task_manager.get_task(item["task_id"]) if item["task_id"] else None
+            if task is None or task.status == TaskStatus.COMPLETED:
+                item["status"] = "done"
+                item["filename"] = (task.result_data or {}).get("new_filename") if task else result.get("new_filename")
+            else:
+                item["status"] = task.status.value  # failed or cancelled
+                item["message"] = task.message
+        except Exception as e:
+            logger.error(f"Queued URL failed in {queue_id}: {e}")
+            item["status"] = "failed"
+            item["message"] = e.detail if isinstance(e, HTTPException) else user_error(e)
+        finally:
+            db.close()
+
+    for item in items:
+        if item["status"] == "queued":
+            item["status"] = "cancelled"
+    _save_queue(queue_id, items, finished=True)

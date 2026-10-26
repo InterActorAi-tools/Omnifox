@@ -178,6 +178,7 @@ class DatabaseTaskManager:
         message: Optional[str] = None,
         result_data: Optional[Dict[str, Any]] = None,
         error: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         session = SessionLocal()
         try:
@@ -196,6 +197,8 @@ class DatabaseTaskManager:
                 row.message = message
             if result_data is not None:
                 row.result_data = result_data
+            if metadata is not None:
+                row.metadata_json = metadata
             if error and status == TaskStatus.FAILED:
                 row.message = error
 

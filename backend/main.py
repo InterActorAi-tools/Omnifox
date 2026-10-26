@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import time
+import uuid
 from fastapi import FastAPI, Request, Response, HTTPException, BackgroundTasks, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,7 +36,7 @@ else:
 
 # Import modules
 from cache_service import cache_service
-from task_manager import task_manager, TaskStatus
+from task_manager import task_manager, TaskStatus, ProcessingTask
 from database import SessionLocal, run_migrations, get_db, bootstrap_lock
 from bootstrap import run_bootstrap
 from utils.dependencies import get_current_user, log_activity, authenticate_sse_cookie, require_client_ownership
@@ -50,6 +51,7 @@ from models import User
 # Import ALL routers
 from api.routes import api_router
 from routers import auth, users, admin, activity_logs, projects, analysis
+from routers.projects import require_project_access
 
 # CLOUDFLARE-SAFE Settings
 CLOUDFLARE_TIMEOUT_LIMIT = 150
@@ -433,7 +435,52 @@ async def process_url_endpoint(
         logger.exception("Error in process_url_endpoint")
         raise HTTPException(status_code=500, detail="URL processing failed")
 
-# File download endpoint 
+MAX_QUEUED_URLS = 10
+
+class URLQueueData(BaseModel):
+    urls: list[str] = Field(min_length=1)
+    project: str = "default"
+    post_context: str = Field(default="", max_length=2048)
+
+# 3 lists of at most 10 links an hour keeps the same AI cap as process_url (H2).
+@app.post("/api/process_url_queue/{client_id}")
+@limiter.limit("3/hour", key_func=USER_OR_IP)
+async def process_url_queue_endpoint(
+    client_id: str,
+    form_data: URLQueueData,
+    background_tasks: BackgroundTasks,
+    request: Request,
+    response: Response,  # slowapi writes rate-limit headers here
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Queue a list of URLs; they are processed one after another in the background."""
+    require_client_ownership(client_id, current_user)  # H5
+    client_id = current_user.email
+    urls = list(dict.fromkeys(u.strip() for u in form_data.urls if u.strip()))
+    if not urls or len(urls) > MAX_QUEUED_URLS:
+        raise HTTPException(status_code=400, detail=f"Add between 1 and {MAX_QUEUED_URLS} links.")
+    require_project_access(db, current_user, form_data.project)
+    existing = task_manager.get_client_tasks(client_id, limit=5)
+    if any(t.status in [TaskStatus.EXTRACTING, TaskStatus.PROCESSING] for t in existing):
+        raise HTTPException(status_code=409, detail="A processing task is already running. Please wait for it to complete or cancel it first.")
+
+    from api.routes.extraction import URLRequest, run_url_queue
+    queue_id = f"url_queue_{uuid.uuid4().hex}"
+    items = [{"url": url, "status": "queued"} for url in urls]
+    task_manager.store_task(ProcessingTask(
+        task_id=queue_id,
+        client_id=client_id,
+        status=TaskStatus.PROCESSING,
+        message=f"0 of {len(urls)} links done",
+        task_type="url_queue",
+        metadata={"project": form_data.project, "items": items},
+    ))
+    payload = URLRequest(url="", project=form_data.project, post_context=form_data.post_context)
+    background_tasks.add_task(run_url_queue, queue_id, client_id, current_user.id, payload, urls, request)
+    return {"queue_id": queue_id, "status": "processing", "items": items}
+
+# File download endpoint
 @app.get("/api/download/{client_id}/{filename}")
 async def download_file(
     client_id: str, 

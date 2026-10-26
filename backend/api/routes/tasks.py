@@ -112,7 +112,8 @@ async def get_my_active_task(current_user: User = Depends(get_current_user)):
     if not running:
         return {"active_task": None}
 
-    task = running[0]
+    # A running link queue is shown by its own panel, not as one of its links.
+    task = next((t for t in running if t.task_type == "url_queue"), running[0])
     return {
         "active_task": {
             "task_id": task.task_id,
@@ -126,3 +127,18 @@ async def get_my_active_task(current_user: User = Depends(get_current_user)):
             else str(task.created_at),
         }
     }
+
+
+@router.get("/me/queue")
+async def get_my_url_queue(current_user: User = Depends(get_current_user)):
+    """Return the caller's latest link queue (POST /api/process_url_queue), if any."""
+    tasks = task_manager.get_client_tasks(current_user.email, limit=20)
+    queue = next((t for t in tasks if t.task_type == "url_queue"), None)
+    if not queue:
+        return {"queue": None}
+    items = queue.metadata.get("items", [])
+    for item in items:
+        if item["status"] == "running" and item.get("task_id"):
+            running = task_manager.get_task(item["task_id"])
+            item["progress"] = running.progress if running else 0
+    return {"queue": {"queue_id": queue.task_id, "status": queue.status.value, "items": items}}

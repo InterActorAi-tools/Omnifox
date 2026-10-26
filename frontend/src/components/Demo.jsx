@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 // Charts load only once there are results to show.
 const Graphs = lazy(() => import("./Graphs"));
 import AnalysisChat from "./AnalysisChat";
+import UrlQueue from "./UrlQueue";
 import { useSearchParams } from "react-router-dom";
 import { authService, endSession, notifyResultsChanged, RESULTS_CHANGED } from "../services/authService";
 
@@ -34,6 +35,7 @@ const Demo = ({ user }) => {
     const [currentTaskId, setCurrentTaskId] = useState(null);
     const [estimatedDuration, setEstimatedDuration] = useState("");
     const [availableProjects, setAvailableProjects] = useState([]);
+    const [queue, setQueue] = useState(null); // a queued list of links
     
     // Refs
     const progressAnimationRef = useRef(null);
@@ -421,6 +423,56 @@ const Demo = ({ user }) => {
         }
     };
 
+    // Links pasted or uploaded as a list: one per line (spaces and commas also separate them).
+    const links = url.split(/[\s,]+/).filter((link) => /^https?:\/\//i.test(link));
+    const queueRunning = queue?.status === "processing";
+
+    const loadQueue = async () => {
+        const response = await authenticatedFetch(`${API_URL}/tasks/me/queue`).catch(() => null);
+        if (response?.ok) return (await response.json()).queue;
+        return null;
+    };
+
+    // Follow a running queue until every link is done.
+    useEffect(() => {
+        if (!queueRunning) return;
+        const timer = setTimeout(async () => {
+            const latest = (await loadQueue()) || queue;
+            const done = (q) => q.items.filter((item) => item.status === "done").length;
+            if (done(latest) > done(queue)) notifyResultsChanged(); // History shows the new result
+            setQueue(latest);
+        }, 5000);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- poll again after each update
+    }, [queue]);
+
+    const handleUrlQueue = async () => {
+        setUploadStatus("");
+        const response = await authenticatedFetch(`${API_URL}/process_url_queue/${clientId}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ urls: links, project: selectedProject, post_context: postContext }),
+        }).catch(() => null);
+        if (response?.ok) {
+            setQueue({ ...(await response.json()), status: "processing" });
+            setUrl("");
+        } else {
+            setUploadStatus(response ? await errorDetail(response, "Error queuing the links.") : "Error queuing the links.");
+        }
+    };
+
+    const cancelQueue = async () => {
+        await authenticatedFetch(`${API_URL}/tasks/cancel_task/${queue.queue_id}`, { method: "POST" }).catch(() => null);
+        setQueue((await loadQueue()) || queue);
+    };
+
+    // A .txt or .csv file with one link per line fills the links box.
+    const handleLinkList = async (e) => {
+        const listFile = e.target.files[0];
+        e.target.value = "";
+        if (listFile) setUrl((await listFile.text()).split(/[\s,;]+/).filter((link) => /^https?:\/\//i.test(link)).join("\n"));
+    };
+
     const handleUrlUpload = async (url) => {
         if (!clientId || !url.trim() || !selectedProject) {
             setUploadStatus("Please check URL and Project selection.");
@@ -608,7 +660,10 @@ const Demo = ({ user }) => {
                 if (serverResponse.ok) {
                     const serverData = await serverResponse.json();
                     const active = serverData.active_task;
-                    if (active) {
+                    if (active?.task_type === "url_queue") {
+                        setQueue(await loadQueue());
+                        setActiveTab("url");
+                    } else if (active) {
                         // Persist so future refreshes use the fast path
                         localStorage.setItem(
                             `omnifox_active_task_${clientId}`,
@@ -711,6 +766,7 @@ const Demo = ({ user }) => {
     const missingInput = [
         activeTab === "file" && !file && "choose an Excel file",
         activeTab === "url" && url.trim() === "" && "paste a post URL",
+        queueRunning && "wait for the queued links to finish",
         selectedProject === "" && "pick a project",
     ].filter(Boolean);
     const missingInputText = missingInput.length ? `To analyze, ${missingInput.join(" and ")}.` : "";
@@ -744,6 +800,15 @@ const Demo = ({ user }) => {
                         </button>
                     </div>
 
+                    {queue && (
+                        <UrlQueue
+                            queue={queue}
+                            onOpen={(filename) => setSearchParams({ result: filename })}
+                            onCancel={cancelQueue}
+                            onDismiss={() => setQueue(null)}
+                        />
+                    )}
+
                     {/* Content Area */}
                     <div className="w-full">
                         {activeTab === "file" ? (
@@ -766,14 +831,22 @@ const Demo = ({ user }) => {
                             <div className="w-full flex flex-col items-center justify-center border-2 border-dashed border-gray-300 p-6 sm:p-8 rounded-lg">
                                 <FaLink size={48} aria-hidden="true" className="text-gray-500 mb-4" />
                                 <label htmlFor="post-url" className="text-black font-semibold text-lg mb-6">Export comments from URL</label>
-                                <input
+                                <textarea
                                     id="post-url"
-                                    type="url"
                                     value={url}
                                     onChange={(e) => setUrl(e.target.value)}
-                                    placeholder="Enter a URL (Facebook, Instagram, YouTube, etc.)"
-                                    className="border-2 border-gray-300 focus:border-[#3B9846] focus:outline-none py-1.5 pl-3 pr-12 rounded-lg w-full max-w-md transition-colors duration-300"
+                                    placeholder="Paste a post URL, or several (one per line)"
+                                    rows={links.length > 1 ? Math.min(links.length, 10) : 1}
+                                    className="border-2 border-gray-300 focus:border-[#3B9846] focus:outline-none py-1.5 pl-3 pr-12 rounded-lg w-full max-w-md transition-colors duration-300 resize-none"
                                 />
+                                <p className="mt-3 text-sm text-gray-600 text-center">
+                                    {links.length > 1 ? `${links.length} links will be queued and analyzed one after another (up to 10). ` : ""}
+                                    <label className="font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900 cursor-pointer">
+                                        Upload a list of links
+                                        <input type="file" accept=".txt,.csv" onChange={handleLinkList} className="sr-only" />
+                                    </label>{" "}
+                                    (.txt or .csv)
+                                </p>
                             </div>
                         )}
                         {activeTab === "file" && (
@@ -835,7 +908,7 @@ const Demo = ({ user }) => {
                         </select>
                         
                         <button
-                            onClick={() => (activeTab === "file" ? handleUpload(file) : handleUrlUpload(url))}
+                            onClick={() => (activeTab === "file" ? handleUpload(file) : links.length > 1 ? handleUrlQueue() : handleUrlUpload(links[0] || url.trim()))}
                             disabled={!!missingInputText}
                             aria-describedby="analyze-hint"
                             className={`font-semibold py-1.5 px-12 rounded-lg flex items-center justify-center gap-2 min-w-[120px] transition-all duration-300 ${
