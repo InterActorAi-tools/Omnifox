@@ -1,6 +1,4 @@
-"""
-Configuration management for Omnifox application - Production-Ready Database-free version
-"""
+"""Configuration for OmniFox, read from environment variables (and a local .env file)."""
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -17,9 +15,8 @@ class Settings(BaseSettings):
     # API Keys
     gemini_api_key: str = ""
     exportcomments_api_key: str = ""
-    
-    
-    # 🔥 NEW: Auth System Settings (Restored)
+
+    # Auth
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./omnifox.db")
     jwt_secret_key: str = ""
     # Fernet key(s) for personal data at rest. Comma-separated: the first
@@ -33,7 +30,6 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
     google_client_id: str = ""
-    google_client_secret: str = ""
     resend_api_key: str = ""
 
     # Public base URL of the frontend. Used to build user-visible links
@@ -60,36 +56,16 @@ class Settings(BaseSettings):
     # File Storage
     upload_folder: str = "uploads"
     max_file_size: int = 50 * 1024 * 1024  # 50MB
-    allowed_extensions: List[str] = [".xlsx", ".xls"]
-    
-    # Cache Settings
-    cache_folder: str = "cache"
-    cache_ttl_hours: int = 24  # 24 hours TTL for URL extractions
-    max_cache_entries: int = 100  # Max 100 cached URLs
-    
-    # Task Management
-    task_cleanup_hours: int = 2  
-    
+
     # Gemini API Settings
     gemini_model: str = "gemini-3.1-flash-lite"  # Primary model
     gemini_fallback_model: str = "gemini-2.5-flash"  # Fallback model
     
     # Performance Settings
     max_concurrent_requests: int = 100  # Paid tier: increased for throughput
-    max_text_length: int = 25000
     max_workers: int = 20
     request_timeout: int = 120  # seconds; per Gemini HTTP call (summaries can be large)
-    request_jitter: float = 0.0  # No jitter needed with proper semaphore limiting
-    
-    # Caching Settings for Gemini API
-    enable_caching: bool = True
-    cache_expire_time: int = 3600  # 1 hour for API responses
-    
-    # 🔥 NEW: Production Logging Settings
-    log_level_production: str = "WARNING"  # Higher threshold for production
-    log_level_development: str = "INFO"    # More verbose for development
-    enable_request_logging: bool = True    # Can be disabled in production
-    
+
     def __init__(self, **kwargs):
         # Pydantic auto-binds `CORS_ORIGINS` as JSON for a List[str] field, which
         # breaks our comma-separated convention. Hide it from Pydantic, then
@@ -106,7 +82,6 @@ class Settings(BaseSettings):
         self.jwt_secret_key = os.getenv("JWT_SECRET_KEY", "")
         self.data_encryption_key = os.getenv("DATA_ENCRYPTION_KEY", "")
         self.google_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
-        self.google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
         self.resend_api_key = os.getenv("RESEND_API_KEY", "")
         self.frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
 
@@ -118,7 +93,6 @@ class Settings(BaseSettings):
         if cors_env:
             self.cors_origins = [origin.strip() for origin in cors_env.split(",") if origin.strip()]
         
-        # 🔥 Production environment detection
         environment = os.getenv("ENVIRONMENT", "development").lower()
         if environment == "production":
             self.debug = False
@@ -128,43 +102,13 @@ class Settings(BaseSettings):
         """Check if running in production mode"""
         return not self.debug
     
-    @property
-    def log_level(self) -> str:
-        """Get appropriate log level based on environment"""
-        return self.log_level_production if self.is_production else self.log_level_development
-    
     class Config:
         # No env_file: load_dotenv() above already loads .env, and pydantic
         # reading it again would parse a comma-separated CORS_ORIGINS as JSON.
         case_sensitive = False
         extra = "ignore"
 
-class ProductionSettings(Settings):
-    """Production-specific settings with optimizations"""
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.debug = False
-
-        # Production optimizations
-        self.cache_expire_time = 7200  # 2 hours
-        self.max_cache_entries = 200  # More entries for production
-        self.enable_request_logging = False  # Disable verbose request logging
-
-        # Production logging settings
-        self.log_level_production = "ERROR"  # Very minimal logging in production
-
-def get_settings() -> Settings:
-    """Get application settings based on environment"""
-    environment = os.getenv("ENVIRONMENT", "development").lower()
-    
-    if environment == "production":
-        return ProductionSettings()
-    else:
-        return Settings()
-
-# Global settings instance
-settings = get_settings()
+settings = Settings()
 
 # Validate required settings
 if not settings.gemini_api_key:
@@ -190,29 +134,10 @@ if settings.is_production and not settings.frontend_url.startswith("https://"):
 
 # Create necessary directories
 Path(settings.upload_folder).mkdir(exist_ok=True)
-Path(settings.cache_folder).mkdir(exist_ok=True)
 
 # Export commonly used values
 UPLOAD_FOLDER = settings.upload_folder
-CACHE_FOLDER = settings.cache_folder
 GEMINI_API_KEY = settings.gemini_api_key
 EXPORTCOMMENTS_API_KEY = settings.exportcomments_api_key
 GEMINI_MODEL = settings.gemini_model
 GEMINI_FALLBACK_MODEL = settings.gemini_fallback_model
-
-# 🔥 NEW: Export auth values (Restored)
-DATABASE_URL = settings.database_url
-JWT_SECRET_KEY = settings.jwt_secret_key
-GOOGLE_CLIENT_ID = settings.google_client_id
-
-# 🔥 Log the current configuration (only once at startup)
-if __name__ != "__main__":
-    import logging
-    
-    # Determine appropriate logger for this message
-    config_logger = logging.getLogger("config")
-    
-    if settings.is_production:
-        print(f"🚀 PRODUCTION MODE: Logging optimized, Debug={settings.debug}")
-    else:
-        print(f"🔧 DEVELOPMENT MODE: Full logging enabled, Debug={settings.debug}")

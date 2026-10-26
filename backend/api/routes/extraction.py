@@ -6,18 +6,17 @@ from fastapi import HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from database import get_db
-from utils.dependencies import log_activity, require_client_ownership
+from database import SessionLocal
+from utils.dependencies import log_activity, log_activity_now, require_client_ownership
 from routers.projects import require_project_access
 from utils import keys
 from models import User
 from cache_service import cache_service
-from services.export_service import ExportCommentsService
+from services.export_service import ExportCommentsService, process_and_cache
 from task_manager import task_manager, TaskStatus, ProcessingTask, user_error
 
 logger = logging.getLogger(__name__)
 
-# 🔥 UPDATED: Added post_context field (From Dev Version)
 # M12/H11: cap post_context at the API boundary so an attacker cannot
 # blow up token costs by submitting a 100 KB context block per call.
 # The Gemini service caps again at prompt-build time (MAX_POST_CONTEXT_LEN)
@@ -218,20 +217,17 @@ def get_platform_warning(url: str) -> str:
         return "Twitter posts usually take 2-8 minutes"
     return "Processing time varies by platform and comment volume"
 
-# 🔥 UPDATED: Async background task with user tracking
 async def background_extract_and_cache_async(
-    task_id: str, 
-    client_id: str, 
+    task_id: str,
+    client_id: str,
     payload: URLRequest,
-    user_id: int,          # <-- ADDED
-    client_host: str,      # <-- ADDED
-    user_agent: str        # <-- ADDED
+    user_id: int,
+    client_host: str,
+    user_agent: str
 ):
     """
     ASYNC BACKGROUND TASK: Handle long-running ExportComments extraction with context
     """
-    # Create new DB session for background task
-    db: Session = next(get_db())
     try:
         export_service = ExportCommentsService()
         
@@ -251,8 +247,8 @@ async def background_extract_and_cache_async(
         # Check final status and log
         final_task = task_manager.get_task(task_id)
         if final_task and final_task.status == TaskStatus.COMPLETED and final_task.result_data:
-            log_activity(
-                db, user_id, "url_extraction_completed", client_host, user_agent,
+            log_activity_now(
+                user_id, "url_extraction_completed", client_host, user_agent,
                 {
                     "url": payload.url,
                     "project": payload.project,
@@ -262,100 +258,45 @@ async def background_extract_and_cache_async(
                 }
             )
         elif final_task:
-             log_activity(
-                db, user_id, "url_extraction_failed", client_host, user_agent,
+            log_activity_now(
+                user_id, "url_extraction_failed", client_host, user_agent,
                 {"url": payload.url, "error": final_task.message}
             )
         
     except Exception as e:
         logger.error(f"Error in background_extract_and_cache_async: {str(e)}")
         task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, f"Extraction failed: {user_error(e)}")
-        log_activity(
-            db, user_id, "url_extraction_failed", client_host, user_agent,
+        log_activity_now(
+            user_id, "url_extraction_failed", client_host, user_agent,
             {"url": payload.url, "error": f"Critical task error: {e}"}
         )
-    finally:
-        db.close()
 
-# 🔥 UPDATED: Async cached processing task with user tracking
 async def process_cached_extraction_async(
-    task_id: str, 
-    client_id: str, 
-    extracted_filename: str, 
-    url_hash: str, 
-    user_id: int,           # <-- ADDED
-    client_host: str,       # <-- ADDED
-    user_agent: str,        # <-- ADDED
+    task_id: str,
+    client_id: str,
+    extracted_filename: str,
+    url_hash: str,
+    user_id: int,
+    client_host: str,
+    user_agent: str,
     post_context: str = "",
     project: str = "default",
 ):
     """
     ASYNC BACKGROUND TASK: Process cached extracted file with optional context
     """
-    db: Session = next(get_db())
-    try:
-        from services.processing import ProcessingService
-        from config import UPLOAD_FOLDER
-        import os
-        
-        processing_service = ProcessingService()
-        
-        client_folder = os.path.join(UPLOAD_FOLDER, client_id)
-        file_path = os.path.join(client_folder, extracted_filename)
-        
-        if not os.path.exists(file_path):
-            task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, "Cached file not found")
-            return
-        
-        if post_context:
-            logger.info("📝 Processing cached extraction with context")
-        
-        # Process the file with context
-        result_data = await processing_service.process_file_contents(
-            file_path, client_id, extracted_filename, task_id, task_manager,
-            project, None, post_context, operation_type="url_extraction"
+    result_data = await process_and_cache(task_id, client_id, extracted_filename, url_hash, project, post_context)
+    task = task_manager.get_task(task_id)
+    if result_data:
+        log_activity_now(
+            user_id, "url_processing_completed", client_host, user_agent,
+            {"filename": extracted_filename, "comments_count": result_data.get("total_comments", 0), "cached_extraction": True}
         )
-        
-        if result_data:
-            # Cache results
-            sentiment_data = {
-                "sentiment_counts": result_data.get("sentiment_counts", {}),
-                "overall_summary": result_data.get("overall_summary", ""),
-                "positive_context": result_data.get("positive_context", ""),
-                "neutral_context": result_data.get("neutral_context", ""),
-                "negative_context": result_data.get("negative_context", ""),
-                "total_comments": result_data.get("total_comments", 0),
-                "objective_results": result_data.get("objective_results", []),
-            }
-            
-            cache_service.cache_url_processing(url_hash, result_data["new_filename"], sentiment_data)
-            
-            task_manager.update_task_status(
-                task_id, TaskStatus.COMPLETED, 100, "Processing completed successfully", result_data
-            )
-            
-            # Log success
-            log_activity(
-                db, user_id, "url_processing_completed", client_host, user_agent,
-                {
-                    "filename": extracted_filename,
-                    "comments_count": result_data.get("total_comments", 0),
-                    "cached_extraction": True
-                }
-            )
-            
-        elif not task_manager.is_task_cancelled(task_id):  # a cancel stays "cancelled"
-            task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, "Processing failed")
-            
-    except Exception as e:
-        logger.error(f"Error in process_cached_extraction_async: {str(e)}")
-        task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, f"Processing error: {user_error(e)}")
-        log_activity(
-            db, user_id, "url_processing_failed", client_host, user_agent,
-            {"filename": extracted_filename, "error": str(e)}
+    elif task and task.status == TaskStatus.FAILED:
+        log_activity_now(
+            user_id, "url_processing_failed", client_host, user_agent,
+            {"filename": extracted_filename, "error": task.message}
         )
-    finally:
-        db.close()
 
 
 def _save_queue(queue_id: str, items: list, finished: bool = False):
@@ -383,13 +324,14 @@ async def run_url_queue(queue_id: str, client_id: str, user_id: int, payload: UR
             break
         item["status"] = "running"
         _save_queue(queue_id, items)
-        db: Session = next(get_db())
         try:
-            user = db.get(User, user_id)
-            jobs = BackgroundTasks()
-            result = await extract_comments_cached(
-                client_id, payload.model_copy(update={"url": item["url"]}), jobs, request, user, db
-            )
+            # Short session: only for starting the link, not while it runs.
+            with SessionLocal() as db:
+                user = db.get(User, user_id)
+                jobs = BackgroundTasks()
+                result = await extract_comments_cached(
+                    client_id, payload.model_copy(update={"url": item["url"]}), jobs, request, user, db
+                )
             item["task_id"] = result.get("task_id")
             run = asyncio.ensure_future(jobs())
             while not run.done():
@@ -410,8 +352,6 @@ async def run_url_queue(queue_id: str, client_id: str, user_id: int, payload: UR
             logger.error(f"Queued URL failed in {queue_id}: {e}")
             item["status"] = "failed"
             item["message"] = e.detail if isinstance(e, HTTPException) else user_error(e)
-        finally:
-            db.close()
 
     for item in items:
         if item["status"] == "queued":

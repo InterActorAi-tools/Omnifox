@@ -1,11 +1,4 @@
-"""
-Comment processing service for sentiment analysis and data processing - COMPLETE MERGED VERSION
-Includes:
-- Production logging
-- Post Context support
-- Cancellation checks
-- Correct Analytics tracking
-"""
+"""Comment processing: sentiment, categories and objective scores for an uploaded or extracted file."""
 import os
 import time
 import uuid
@@ -17,8 +10,7 @@ from collections import Counter
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor
 
-# Import your analytics module (make sure this path is correct for your project structure)
-from simple_analytics import simple_analytics 
+from simple_analytics import simple_analytics
 from config import settings, UPLOAD_FOLDER
 from database import SessionLocal
 from models import Project
@@ -69,27 +61,11 @@ class ProcessingService:
     def __init__(self):
         self.gemini_service = get_gemini()
         self.thread_pool = _processing_executor
-        
-        # Production logging: Track processing statistics
-        self._processing_stats = {
-            'total_processed': 0,
-            'total_failed': 0,
-            'last_batch_size': 0
-        }
-    
-    def _log_processing_milestone(self, message: str, force_log: bool = False):
-        """Log processing milestones based on environment"""
-        if settings.debug or force_log:
-            logger.info(message)
-        elif not settings.debug:
-            # Production: Only log major milestones
-            logger.warning(message)
-    
-    # 🔥 UPDATED: Added post_context parameter (From Dev Version)
-    async def process_file_contents(self, file_path: str, client_id: str, 
-                                  base_filename: str, task_id: str = None, 
+
+    async def process_file_contents(self, file_path: str, client_id: str,
+                                  base_filename: str, task_id: str = None,
                                   task_manager=None, project: str = "default",
-                                  progress_callback=None, post_context: str = None,
+                                  post_context: str = None,
                                   objectives: Optional[List[str]] = None,
                                   operation_type: str = "file_upload") -> Dict[str, Any]:
         """Process file contents with optional post context. Comments are also scored
@@ -103,10 +79,7 @@ class ProcessingService:
             if task_manager and task_id and task_manager.is_task_cancelled(task_id):
                 logger.info(f"Task {task_id} cancelled before processing started")
                 return None
-            
-            if progress_callback:
-                progress_callback(0, 100)
-            
+
             loop = asyncio.get_event_loop()
             # copy_context: the thread must see a private project's key (utils/crypto.py)
             file_data = await loop.run_in_executor(
@@ -118,7 +91,7 @@ class ProcessingService:
             all_texts = file_data['texts']
             metadata_df = file_data.get('metadata_df')
             
-            self._log_processing_milestone(f"📄 Processing {len(all_texts)} comments from {base_filename}")
+            logger.info(f"📄 Processing {len(all_texts)} comments from {base_filename}")
             
             if post_context:
                 logger.info("📝 Using post context")
@@ -133,13 +106,9 @@ class ProcessingService:
                     "Starting sentiment analysis..."
                 )
             
-            if progress_callback:
-                progress_callback(5, 100)
-            
-            # 🔥 Pass post_context to processing
             result_data = await self._process_comments_in_chunks_enhanced(
-                all_texts, metadata_df, client_id, base_filename, task_id, 
-                task_manager, project, progress_callback, post_context, objectives, operation_type
+                all_texts, metadata_df, client_id, base_filename, task_id,
+                task_manager, project, post_context, objectives, operation_type
             )
             
             return result_data
@@ -155,18 +124,15 @@ class ProcessingService:
                 task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, f"Processing failed: {user_error(e)}")
             raise
     
-    # 🔥 UPDATED: Added post_context parameter
     async def _process_comments_in_chunks_enhanced(self, all_texts: List[str], metadata_df: Optional[pd.DataFrame],
                                                  client_id: str, base_filename: str, task_id: str = None,
-                                                 task_manager=None, project: str = "default", 
-                                                 progress_callback=None, post_context: str = None,
+                                                 task_manager=None, project: str = "default",
+                                                 post_context: str = None,
                                                  objectives: List[str] = (),
                                                  operation_type: str = "file_upload") -> Dict[str, Any]:
         """Process comments with optional post context"""
         total_comments = len(all_texts)
-        self._processing_stats['last_batch_size'] = total_comments
-        
-        self._log_processing_milestone(f"🔄 Processing {total_comments} comments")
+        logger.info(f"🔄 Processing {total_comments} comments")
         
         if post_context:
             logger.info("📝 Post context enabled for better analysis")
@@ -200,7 +166,6 @@ class ProcessingService:
                     )
         
         try:
-            # 🔥 Use context-aware batch processing (from Dev version)
             analyses = await self.gemini_service.analyze_comments_batch_with_context(
                 all_texts, post_context, gemini_progress_callback, objectives
             )
@@ -217,9 +182,6 @@ class ProcessingService:
                 "Generating results..."
             )
         
-        if progress_callback:
-            progress_callback(90, 100)
-        
         final_results = await self._create_final_results_enhanced(
             all_texts, analyses, metadata_df, client_id, base_filename, project, task_id, task_manager, post_context,
             objectives, operation_type
@@ -231,9 +193,6 @@ class ProcessingService:
                 smooth_progress.get_smooth_progress('FINALIZING', 0.8),
                 "Creating Excel report..."
             )
-        
-        if progress_callback:
-            progress_callback(100, 100)
         
         return final_results
     
@@ -258,7 +217,7 @@ class ProcessingService:
             objective_scores = []
             skipped_rows = 0
             
-            self._log_processing_milestone("=== PROCESSING RESULTS WITH STRICT FILTERING ===", force_log=True)
+            logger.info("=== PROCESSING RESULTS WITH STRICT FILTERING ===")
             
             for idx, (text, analysis) in enumerate(zip(all_texts, analyses)):
                 if analysis is None:
@@ -273,14 +232,11 @@ class ProcessingService:
                 if objectives:
                     objective_scores.append(analysis["objectives"])
             
-            self._processing_stats['total_processed'] += len(valid_rows)
-            self._processing_stats['total_failed'] += skipped_rows
-            
-            self._log_processing_milestone("=== FILTERING COMPLETE ===", force_log=True)
-            self._log_processing_milestone(f"✅ Successfully processed: {len(valid_rows)} rows", force_log=True)
-            self._log_processing_milestone(f"❌ Skipped/Failed: {skipped_rows} rows", force_log=True)
+            logger.info("=== FILTERING COMPLETE ===")
+            logger.info(f"✅ Successfully processed: {len(valid_rows)} rows")
+            logger.info(f"❌ Skipped/Failed: {skipped_rows} rows")
             success_rate = (len(valid_rows)/(len(all_texts))*100) if all_texts else 0
-            self._log_processing_milestone(f"📊 Success rate: {success_rate:.1f}%", force_log=True)
+            logger.info(f"📊 Success rate: {success_rate:.1f}%")
             
             if len(valid_rows) == 0:
                 raise ValueError("No valid comments were successfully processed. All rows failed sentiment analysis.")
@@ -318,25 +274,25 @@ class ProcessingService:
                 else:
                     logger.warning(f"⚠️ Metadata row count mismatch: {len(valid_metadata)} vs {len(processed_data)}")
             
-            self._log_processing_milestone(f"📊 Sentiment breakdown: {dict(Counter(sentiment_list))}", force_log=True)
+            logger.info(f"📊 Sentiment breakdown: {dict(Counter(sentiment_list))}")
 
             if task_manager and task_id and task_manager.is_task_cancelled(task_id):
                 logger.info(f"Task {task_id} cancelled before context generation")
                 raise asyncio.CancelledError("Task cancelled by user")
 
-            summaries = await self.gemini_service.summarize(
+            # The two summaries are independent: one Gemini round trip instead of two.
+            summary_calls = [self.gemini_service.summarize(
                 [{"translation": t, "sentiment": s, "category": c}
                  for t, s, c in zip(translations, sentiment_list, category_list)],
                 post_context or "",
-            )
+            )]
+            if objectives:
+                summary_calls.append(self.gemini_service.summarize_objectives(
+                    objectives, [{"translation": t, "objectives": o} for t, o in zip(translations, objective_scores)]))
+            summaries, *objective_summaries = await asyncio.gather(*summary_calls)
             positive_context, neutral_context, negative_context = (
                 summaries["positive"], summaries["neutral"], summaries["negative"])
-
-            objectives_summary = []
-            if objectives:
-                objective_summaries = await self.gemini_service.summarize_objectives(
-                    objectives, [{"translation": t, "objectives": o} for t, o in zip(translations, objective_scores)])
-                objectives_summary = objective_results(objectives, objective_scores, objective_summaries)
+            objectives_summary = objective_results(objectives, objective_scores, objective_summaries[0]) if objectives else []
 
             sentiment_counts = dict(Counter(sentiment_list))
             category_counts = dict(Counter(category_list))
@@ -383,19 +339,18 @@ class ProcessingService:
                 "excel_row_count": len(processed_data)
             }
             
-            self._log_processing_milestone("=== FINAL RESULTS SUMMARY ===", force_log=True)
-            self._log_processing_milestone(f"📁 Excel file: {new_filename}", force_log=True)
-            self._log_processing_milestone(f"📊 Rows in Excel: {len(processed_data)} (only successfully processed)", force_log=True)
+            logger.info("=== FINAL RESULTS SUMMARY ===")
+            logger.info(f"📁 Excel file: {new_filename}")
+            logger.info(f"📊 Rows in Excel: {len(processed_data)} (only successfully processed)")
             if settings.debug:
                 logger.info(f"📋 Final columns: {list(processed_data.columns)}")
-            self._log_processing_milestone(f"✅ Success rate: {result_data['success_rate']}%", force_log=True)
+            logger.info(f"✅ Success rate: {result_data['success_rate']}%")
 
             try:
                 await asyncio.to_thread(record_snapshot, project, task_id, result_data)
             except Exception as e:
                 logger.error(f"❌ Saving the project trends snapshot failed: {e}")
 
-            # 🔥 ANALYTICS TRACKING FIX: Removed user_id from call
             try:
                 if settings.debug:
                     logger.info(f"📊 Tracking analytics: project={project}, comments={len(valid_rows)}")
@@ -406,7 +361,7 @@ class ProcessingService:
                     comments_count=len(valid_rows),
                     operation_type=operation_type
                 )
-                self._log_processing_milestone("✅ Analytics tracking successful", force_log=True)
+                logger.info("✅ Analytics tracking successful")
             except Exception as e:
                 logger.error(f"❌ Analytics tracking failed: {e}")
                 
@@ -420,6 +375,3 @@ class ProcessingService:
         except Exception as e:
             logger.error(f"Error creating final results: {str(e)}")
             raise
-    
-    # ... (These were not changed in the Dev version, so keeping them as is) ...
-    

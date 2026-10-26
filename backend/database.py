@@ -1,11 +1,10 @@
 import logging
 from contextlib import contextmanager
-from typing import Callable, TypeVar
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from config import settings  # ← Use main config
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +30,6 @@ _BOOTSTRAP_LOCK_KEY = 4823917562012345671
 _is_postgres = settings.database_url.startswith(("postgres", "postgresql"))
 
 
-T = TypeVar("T")
-
-
 @contextmanager
 def bootstrap_lock():
     """Serialize startup-time schema + seed work across gunicorn workers.
@@ -56,12 +52,6 @@ def bootstrap_lock():
             yield
         finally:
             conn.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": _BOOTSTRAP_LOCK_KEY})
-
-
-def run_with_bootstrap_lock(fn: Callable[[], T]) -> T:
-    """Convenience: call fn() inside the bootstrap_lock context."""
-    with bootstrap_lock():
-        return fn()
 
 
 def get_db():

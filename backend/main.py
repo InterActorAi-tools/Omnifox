@@ -15,19 +15,18 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from config import settings, UPLOAD_FOLDER
 
-# 🔥 SIMPLE FIX: Configure logging with production awareness
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-# 🔥 Simple production logging
+# Production: quiet third-party libraries, but keep our warnings (e.g. Gemini model fallback, failed calls).
 if not settings.debug:
     logging.getLogger("httpx").setLevel(logging.ERROR)
     logging.getLogger("google_genai").setLevel(logging.ERROR)
     logging.getLogger("google.genai").setLevel(logging.ERROR)
     logging.getLogger("google_genai.models").setLevel(logging.ERROR)
-    logging.getLogger("services.gemini_service").setLevel(logging.ERROR)
+    logging.getLogger("services.gemini_service").setLevel(logging.WARNING)
     logging.getLogger("services.processing").setLevel(logging.WARNING)
     print("📱 Production mode: Minimal logging enabled")
 else:
@@ -39,7 +38,9 @@ from cache_service import cache_service
 from task_manager import task_manager, TaskStatus, ProcessingTask
 from database import SessionLocal, run_migrations, get_db, bootstrap_lock
 from bootstrap import run_bootstrap
-from utils.dependencies import get_current_user, log_activity, authenticate_sse_cookie, require_client_ownership
+from utils.dependencies import (
+    get_current_user, log_activity, authenticate_sse_cookie, require_client_ownership, require_no_running_task,
+)
 from utils.paths import safe_upload_path
 from cryptography.fernet import InvalidToken
 from utils import keys
@@ -55,8 +56,7 @@ from api.routes import api_router
 from routers import auth, users, admin, activity_logs, projects, analysis
 from routers.projects import require_project_access
 
-# CLOUDFLARE-SAFE Settings
-CLOUDFLARE_TIMEOUT_LIMIT = 150
+# Below Cloudflare's 150 s request limit.
 SAFE_REQUEST_TIMEOUT = 120
 SSE_CHUNK_INTERVAL = 5
 
@@ -231,8 +231,6 @@ async def security_headers_middleware(request: Request, call_next):
     return response
 
 
-# Uploads stream up to 50 MB; on a slow connection that legitimately
-# takes longer than the general request timeout.
 # Uploads stream up to 50 MB; a chat turn or Apply can make several Gemini
 # calls. Both may legitimately take longer than SAFE_REQUEST_TIMEOUT.
 _TIMEOUT_EXEMPT_PREFIXES = ("/api/upload/process", "/api/analysis/")
@@ -256,7 +254,6 @@ async def timeout_middleware(request: Request, call_next):
         logger.error(f"Middleware error: {e}")
         return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
-# 🔥 Include ALL routers
 app.include_router(auth.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(api_router, prefix="/api")
@@ -386,7 +383,6 @@ async def get_progress_stream(
         },
     )
 
-# 🔥 UPDATED MODEL: Now includes post_context
 # M12/H11: 2 KB cap on post_context applied at the API boundary so an
 # attacker cannot inflate Gemini token usage with a giant context block.
 class URLFormData(BaseModel):
@@ -409,14 +405,7 @@ async def process_url_endpoint(
     try:
         require_client_ownership(client_id, current_user)  # H5
         client_id = current_user.email  # canonical: never trust the case/spelling in the URL
-        # Enforce one active process per user
-        existing = task_manager.get_client_tasks(current_user.email, limit=5)
-        running = [t for t in existing if t.status in [TaskStatus.EXTRACTING, TaskStatus.PROCESSING]]
-        if running:
-            raise HTTPException(
-                status_code=409,
-                detail=f"A processing task is already running ({running[0].task_id}). Please wait for it to complete or cancel it first."
-            )
+        require_no_running_task(client_id)
 
         # Forward to the extraction service
         from api.routes.extraction import extract_comments_cached
@@ -464,9 +453,7 @@ async def process_url_queue_endpoint(
         raise HTTPException(status_code=400, detail=f"Add between 1 and {MAX_QUEUED_URLS} links.")
     require_project_access(db, current_user, form_data.project)
     keys.use_project(db, form_data.project)  # the queue and its links' results use a private project's key
-    existing = task_manager.get_client_tasks(client_id, limit=5)
-    if any(t.status in [TaskStatus.EXTRACTING, TaskStatus.PROCESSING] for t in existing):
-        raise HTTPException(status_code=409, detail="A processing task is already running. Please wait for it to complete or cancel it first.")
+    require_no_running_task(client_id)
 
     from api.routes.extraction import URLRequest, run_url_queue
     queue_id = f"url_queue_{uuid.uuid4().hex}"

@@ -2,11 +2,12 @@ from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from database import get_db
+from database import SessionLocal, get_db
 from models import User, RefreshToken
 from utils import keys
 from utils.cookies import ACCESS_TOKEN_COOKIE, DATA_KEY_COOKIE
 from utils.security import verify_token
+from task_manager import task_manager, TaskStatus
 
 # `auto_error=False`: we don't want HTTPBearer to raise 403 when the
 # Authorization header is missing, because the primary credential source
@@ -177,20 +178,38 @@ def current_session(request: Request, db: Session) -> RefreshToken | None:
     return db.get(RefreshToken, session_id) if session_id else None
 
 
+def require_no_running_task(client_id: str) -> None:
+    """409 while the user already has an extraction or analysis running (one at a time)."""
+    running = (TaskStatus.EXTRACTING, TaskStatus.PROCESSING)
+    if any(t.status in running for t in task_manager.get_client_tasks(client_id, limit=5)):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A processing task is already running. Please wait for it to complete or cancel it first.",
+        )
+
+
 def log_activity(db: Session, user_id: int, action: str, ip: str = None, user_agent: str = None, extra: dict = None):
     """Helper to log user activity"""
     from models import ActivityLog
-    # import json <-- No longer needed
-    
+
     log = ActivityLog(
         user_id=user_id,
         action=action,
         ip_address=ip,
         user_agent=user_agent,
-        extra_data=extra if extra else None # <--- ✅ FIX
+        extra_data=extra if extra else None
     )
     db.add(log)
     db.commit()
+
+
+def log_activity_now(user_id: int, action: str, ip: str = None, user_agent: str = None, extra: dict = None):
+    """log_activity on its own short session, so a long background job never holds a pooled connection."""
+    db = SessionLocal()
+    try:
+        log_activity(db, user_id, action, ip, user_agent, extra)
+    finally:
+        db.close()
 
 
 def find_user_by_email(db: Session, email: str):

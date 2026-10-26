@@ -1,11 +1,4 @@
-"""
-File upload routes for Omnifox - COMPLETE MERGED VERSION
-Includes:
-- Post Context Support
-- User Authentication & Logging
-- Background Processing
-- File Management Endpoints
-"""
+"""File upload route: store an uploaded Excel file and analyse it in the background."""
 import os
 import time
 import uuid
@@ -20,7 +13,9 @@ from utils.file_utils import sanitize_filename
 from utils.paths import safe_upload_path
 from utils.crypto import write_file
 from database import get_db
-from utils.dependencies import get_current_user, log_activity, require_client_ownership
+from utils.dependencies import (
+    get_current_user, log_activity, log_activity_now, require_client_ownership, require_no_running_task,
+)
 from routers.projects import require_project_access
 from utils import keys
 from utils.rate_limit import limiter, USER_OR_IP
@@ -31,13 +26,11 @@ from api.dependencies import get_processing_service
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Ensure upload folder exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Strong references to in-flight processing jobs (see process_uploaded_file).
 _running_jobs: set[asyncio.Task] = set()
 
-# 🔥 UPDATED: Added post_context parameter + Authentication
 @router.post("/process/{client_id}")
 @limiter.limit("30/hour", key_func=USER_OR_IP)  # H2: per-user AI cap
 async def process_uploaded_file(
@@ -71,15 +64,8 @@ async def process_uploaded_file(
         if not client_id or len(client_id) < 3:
             raise HTTPException(status_code=400, detail="Invalid client ID")
 
-        # Enforce one active process per user
-        existing = task_manager.get_client_tasks(current_user.email, limit=5)
-        running = [t for t in existing if t.status in [TaskStatus.EXTRACTING, TaskStatus.PROCESSING]]
-        if running:
-            raise HTTPException(
-                status_code=409,
-                detail=f"A processing task is already running ({running[0].task_id}). Please wait for it to complete or cancel it first."
-            )
-        
+        require_no_running_task(client_id)
+
         # M12/H11: same 2 KB post_context cap as the URL endpoints.
         if len(post_context) > 2048:
             raise HTTPException(status_code=422, detail="post_context exceeds 2048 characters")
@@ -192,7 +178,6 @@ async def process_uploaded_file(
         logger.exception("Upload failed")
         raise HTTPException(status_code=500, detail="Upload failed")
 
-# 🔥 UPDATED: Added user_id and logging params
 async def process_file_with_progress(
     file_path: str, client_id: str, 
     original_filename: str, task_id: str,
@@ -204,11 +189,6 @@ async def process_file_with_progress(
     user_agent: str = None     # <-- ADDED
 ):
     """Background task to process file with smooth progress, context, and logging"""
-    
-    # Create DB session for background logging
-    from database import SessionLocal
-    bg_db = SessionLocal()
-    
     try:
         # Phase 1: Initialize
         task_mgr.update_task_status(
@@ -217,20 +197,9 @@ async def process_file_with_progress(
             "File uploaded, initializing processing..."
         )
         
-        def smooth_progress_callback(current, total):
-            if total > 0:
-                phase_progress = current / total
-                overall_progress = smooth_progress.get_smooth_progress('PROCESSING', phase_progress)
-                if phase_progress < 0.5:
-                    message = f"Analyzing text with AI... ({current}/{total})"
-                else:
-                    message = f"Generating sentiment insights... ({current}/{total})"
-                task_mgr.update_task_status(task_id, TaskStatus.PROCESSING, overall_progress, message)
-        
-        # Process file
         result_data = await processing_service.process_file_contents(
-            file_path, client_id, original_filename, task_id, task_mgr, 
-            project, smooth_progress_callback, post_context
+            file_path, client_id, original_filename, task_id, task_mgr,
+            project, post_context=post_context
         )
         
         # None means the task was cancelled before processing finished.
@@ -252,8 +221,8 @@ async def process_file_with_progress(
         
         # Log Success (Auth System)
         if user_id:
-            log_activity(
-                bg_db, user_id, "extraction_completed", ip_address, user_agent,
+            log_activity_now(
+                user_id, "extraction_completed", ip_address, user_agent,
                 {
                     "filename": original_filename,
                     "comment_count": result_data.get("total_comments", 0),
@@ -266,14 +235,13 @@ async def process_file_with_progress(
         
         # Log Failure (Auth System)
         if user_id:
-            log_activity(
-                bg_db, user_id, "extraction_failed", ip_address, user_agent,
+            log_activity_now(
+                user_id, "extraction_failed", ip_address, user_agent,
                 {"filename": original_filename, "error": str(e), "task_id": task_id}
             )
             
         task_mgr.update_task_status(task_id, TaskStatus.FAILED, 0, f"Processing failed: {user_error(e)}")
     finally:
-        bg_db.close()
         # Data minimisation: the upload is only needed while processing;
         # the result file holds everything the user downloads.
         if os.path.exists(file_path):

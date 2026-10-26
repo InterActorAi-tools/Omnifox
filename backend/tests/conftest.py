@@ -92,13 +92,15 @@ def app_client(monkeypatch, tmp_path):
     import simple_analytics
     import task_manager
     from services import trends
+    from utils import dependencies
+    from api.routes import extraction
 
     engine = create_engine(f"sqlite:///{tmp_path / 'app.db'}", connect_args={"check_same_thread": False})
     TestSession = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     database.Base.metadata.create_all(bind=engine)
     monkeypatch.setattr(database, "engine", engine)
     monkeypatch.setattr(database, "SessionLocal", TestSession)
-    for module in (simple_analytics, task_manager, cache_service, trends):
+    for module in (simple_analytics, task_manager, cache_service, trends, dependencies, extraction):
         monkeypatch.setattr(module, "SessionLocal", TestSession)
 
     from bootstrap import ensure_permissions, ensure_roles

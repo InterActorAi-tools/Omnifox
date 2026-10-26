@@ -6,7 +6,7 @@ manager methods) is preserved so call sites in routes/, services/, and
 main.py require no changes.
 
 Tasks persist across Gunicorn workers and container restarts. Retention
-is unbounded (audit trail); cleanup_old_tasks() is a no-op.
+is unbounded (audit trail).
 """
 from __future__ import annotations
 
@@ -318,10 +318,6 @@ class DatabaseTaskManager:
             return 0
         finally:
             session.close()
-
-    def cleanup_old_tasks(self) -> int:
-        """No-op under the keep-forever audit-trail policy."""
-        return 0
 
 # Global task manager instance - same name and import path as before.
 task_manager = DatabaseTaskManager()

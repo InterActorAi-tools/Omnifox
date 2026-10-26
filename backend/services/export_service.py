@@ -1,10 +1,9 @@
-"""
-COMPLETE FIXED ExportComments service with nested reply flattening and POST CONTEXT SUPPORT
-"""
+"""ExportComments extraction: fetch a post's comments (replies flattened), then analyse them."""
 import importlib.metadata
 import io
 import os
 import time
+import uuid
 import asyncio
 import aiohttp
 import pandas as pd
@@ -169,13 +168,49 @@ def _write_excel(df: pd.DataFrame, path: str) -> None:
         df.to_excel(writer, index=False)
     write_file(path, buffer.getvalue())
 
+async def process_and_cache(task_id: str, client_id: str, extracted_filename: str, url_hash: str,
+                            project: str = "default", post_context: str = "") -> Optional[Dict[str, Any]]:
+    """Analyse an extracted file, cache the result for its URL and complete the task.
+    Returns the result, or None if the run was cancelled or failed (the task says which)."""
+    from cache_service import cache_service
+    from task_manager import task_manager
+
+    file_path = os.path.join(UPLOAD_FOLDER, client_id, extracted_filename)
+    if not os.path.exists(file_path):
+        task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, "Extracted file not found")
+        return None
+    try:
+        result_data = await ProcessingService().process_file_contents(
+            file_path, client_id, extracted_filename, task_id, task_manager,
+            project, post_context=post_context, operation_type="url_extraction"
+        )
+    except asyncio.CancelledError:
+        return None  # processing already marked the task cancelled
+    except Exception as e:
+        logger.error(f"❌ Error in processing: {str(e)}")
+        task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, f"Processing error: {user_error(e)}")
+        return None
+
+    if result_data is None:  # cancelled before processing started
+        return None
+
+    keep = ("sentiment_counts", "overall_summary", "positive_context", "neutral_context",
+            "negative_context", "total_comments", "objective_results")
+    cache_service.cache_url_processing(url_hash, result_data["new_filename"], {k: result_data.get(k) for k in keep})
+    task_manager.update_task_status(
+        task_id, TaskStatus.COMPLETED,
+        smooth_progress.get_smooth_progress('COMPLETED', 1.0),
+        "Processing completed successfully", result_data
+    )
+    return result_data
+
+
 class ExportCommentsService:
     """Enhanced service with nested reply flattening and post context support"""
     
     def __init__(self):
         self.api_key = EXPORTCOMMENTS_API_KEY
         self.export_client = ExportComments(self.api_key)
-        self.processing_service = ProcessingService()
 
     # Fields to inherit from parent comment if reply doesn't have its own value.
     # Covers all platforms: Facebook, YouTube, Instagram, TikTok.
@@ -432,10 +467,8 @@ class ExportCommentsService:
                                     "Starting sentiment analysis..."
                                 )
 
-                                await self._start_processing_v2_fixed(
-                                    task_id, client_id, result["filename"], url_hash,
-                                    cache_service, task_manager,
-                                    project, user_id, post_context
+                                await process_and_cache(
+                                    task_id, client_id, result["filename"], url_hash, project, post_context
                                 )
                             else:
                                 task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, "No valid comments found")
@@ -529,8 +562,8 @@ class ExportCommentsService:
             client_folder = os.path.join(UPLOAD_FOLDER, client_id)
             os.makedirs(client_folder, exist_ok=True)
 
-            timestamp = int(time.time())
-            extracted_filename = f"extracted_{platform}_comments_with_replies_{timestamp}.xlsx"
+            # Random suffix: two extractions in the same second must not overwrite each other.
+            extracted_filename = f"extracted_{platform}_comments_with_replies_{int(time.time())}_{uuid.uuid4().hex[:6]}.xlsx"
             file_path = os.path.join(client_folder, extracted_filename)
 
             await asyncio.to_thread(_write_excel, processed_df, file_path)
@@ -549,72 +582,3 @@ class ExportCommentsService:
         except Exception as e:
             logger.error(f"❌ Error processing extracted data: {str(e)}")
             return None
-
-    async def _start_processing_v2_fixed(self, task_id: str, client_id: str,
-                                         extracted_filename: str, url_hash: str,
-                                         cache_service: Any, task_manager: Any,
-                                         project: str = "default", user_id: int = None, post_context: str = ""):
-        """Start sentiment processing with optional post context and analytics"""
-        try:
-            if task_manager.is_task_cancelled(task_id):
-                return
-
-            client_folder = os.path.join(UPLOAD_FOLDER, client_id)
-            file_path = os.path.join(client_folder, extracted_filename)
-
-            if post_context:
-                logger.info("📝 Processing with post context")
-
-            def smooth_progress_callback(current, total):
-                if task_manager.is_task_cancelled(task_id):
-                    raise asyncio.CancelledError("Task cancelled by user")
-
-                if total > 0:
-                    phase_progress = current / total
-                    overall_progress = smooth_progress.get_smooth_progress('PROCESSING', phase_progress)
-
-                    if phase_progress < 0.3:
-                        message = f"Analyzing comments and replies with AI... ({current}/{total})"
-                    elif phase_progress < 0.7:
-                        message = f"Processing sentiment analysis... ({current}/{total})"
-                    else:
-                        message = f"Finalizing analysis... ({current}/{total})"
-
-                    task_manager.update_task_status(
-                        task_id, TaskStatus.PROCESSING, overall_progress, message
-                    )
-
-            result_data = await self.processing_service.process_file_contents(
-                file_path, client_id, extracted_filename, task_id, task_manager,
-                project, smooth_progress_callback, post_context, operation_type="url_extraction"
-            )
-
-            if result_data:
-                sentiment_data = {
-                    "sentiment_counts": result_data.get("sentiment_counts", {}),
-                    "overall_summary": result_data.get("overall_summary", ""),
-                    "positive_context": result_data.get("positive_context", ""),
-                    "neutral_context": result_data.get("neutral_context", ""),
-                    "negative_context": result_data.get("negative_context", ""),
-                    "total_comments": result_data.get("total_comments", 0),
-                    "objective_results": result_data.get("objective_results", []),
-                }
-
-                cache_service.cache_url_processing(url_hash, result_data["new_filename"], sentiment_data)
-
-                task_manager.update_task_status(
-                    task_id, TaskStatus.COMPLETED,
-                    smooth_progress.get_smooth_progress('COMPLETED', 1.0),
-                    "Processing completed successfully", result_data
-                )
-
-                logger.info(f"✅ Completed processing with replies for task: {task_id}")
-            else:
-                task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, "Processing failed")
-
-        except asyncio.CancelledError:
-            task_manager.update_task_status(task_id, TaskStatus.CANCELLED, 0, "Processing cancelled by user")
-            return
-        except Exception as e:
-            task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, f"Processing error: {user_error(e)}")
-            logger.error(f"❌ Error in processing: {str(e)}")

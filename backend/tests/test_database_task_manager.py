@@ -203,16 +203,6 @@ def test_delete_unknown_task_returns_false(mgr):
     assert mgr.delete_task("missing") is False
 
 
-def test_cleanup_old_tasks_is_noop_returns_zero(mgr):
-    """Keep-forever audit-trail policy: cleanup is a no-op."""
-    mgr.store_task(ProcessingTask(
-        task_id="t1", client_id="c1",
-        status=TaskStatus.COMPLETED, progress=100,
-    ))
-    assert mgr.cleanup_old_tasks() == 0
-    assert mgr.get_task("t1") is not None
-
-
 def test_processing_task_metadata_round_trip(mgr):
     """metadata dataclass field must persist through metadata_json column."""
     payload = {"nested": {"key": [1, 2, 3]}, "flag": True}
