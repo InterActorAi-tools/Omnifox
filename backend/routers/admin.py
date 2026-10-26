@@ -26,7 +26,7 @@ class GenerateInviteRequest(BaseModel):
 
 # Get all users (Admin only)
 @router.get("/users", response_model=List[UserResponse])
-async def get_all_users(
+def get_all_users(
     current_user: User = Depends(get_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -36,7 +36,7 @@ async def get_all_users(
 
 # Update user roles (Admin only)
 @router.put("/users/{user_id}/roles", response_model=UserResponse)
-async def update_user_roles(
+def update_user_roles(
     user_id: int,
     roles_data: UpdateUserRolesRequest,
     request: Request,
@@ -75,7 +75,7 @@ async def update_user_roles(
 
 # Delete user (Admin only)
 @router.delete("/users/{user_id}")
-async def delete_user(
+def delete_user(
     user_id: int,
     request: Request,
     current_user: User = Depends(get_admin_user),
@@ -103,7 +103,7 @@ async def delete_user(
 
 # Get all available roles
 @router.get("/roles")
-async def get_all_roles(
+def get_all_roles(
     current_user: User = Depends(get_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -120,7 +120,7 @@ async def get_all_roles(
 
 # Admin Session Management
 @router.get("/users/{user_id}/sessions", response_model=List[SessionResponse])
-async def get_user_sessions_admin(
+def get_user_sessions_admin(
     user_id: int,
     current_user: User = Depends(get_admin_user),
     db: Session = Depends(get_db)
@@ -134,7 +134,7 @@ async def get_user_sessions_admin(
     return [SessionResponse(id=s.id, created_at=s.created_at, last_used=s.last_used) for s in sessions]
 
 @router.get("/invitations")
-async def get_pending_invitations(
+def get_pending_invitations(
     current_user: User = Depends(get_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -166,7 +166,7 @@ async def get_pending_invitations(
     ]
 
 @router.delete("/users/{user_id}/sessions/{session_id}")
-async def revoke_user_session_admin(
+def revoke_user_session_admin(
     user_id: int,
     session_id: int,
     current_user: User = Depends(get_admin_user),
@@ -188,7 +188,7 @@ async def revoke_user_session_admin(
 
 # Invite Generator
 @router.post("/invitations/generate")
-async def generate_invitation_link(
+def generate_invitation_link(
     data: GenerateInviteRequest,
     request: Request,
     current_user: User = Depends(get_admin_user),

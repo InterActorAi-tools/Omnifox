@@ -130,7 +130,7 @@ class TestRefreshRotation:
         old_refresh, old_session_id = seeded_session
         db = isolated_db()
         try:
-            response = await refresh_tokens(
+            response = refresh_tokens(
                 request=_fake_request(),
                 response=_fake_response(),
                 db=db,
@@ -162,7 +162,7 @@ class TestRefreshRotation:
         old_refresh, old_session_id = seeded_session
         db = isolated_db()
         try:
-            await refresh_tokens(
+            refresh_tokens(
                 request=_fake_request(),
                 response=_fake_response(),
                 db=db,
@@ -183,7 +183,7 @@ class TestRefreshRotation:
         old_refresh, _ = seeded_session
         db = isolated_db()
         try:
-            await refresh_tokens(
+            refresh_tokens(
                 request=_fake_request(),
                 response=_fake_response(),
                 db=db,
@@ -216,7 +216,7 @@ class TestRefreshReuseDetection:
         old_refresh, _ = seeded_session
         db = isolated_db()
         try:
-            await refresh_tokens(
+            refresh_tokens(
                 request=_fake_request(),
                 response=_fake_response(),
                 db=db,
@@ -240,7 +240,7 @@ class TestRefreshReuseDetection:
             old_row.last_used = datetime.utcnow() - timedelta(minutes=5)
             db.commit()
             with pytest.raises(HTTPException) as exc:
-                await refresh_tokens(
+                refresh_tokens(
                     request=_fake_request(),
                     response=_fake_response(),
                     db=db,
@@ -271,7 +271,7 @@ class TestRefreshReuseDetection:
         db = isolated_db()
         try:
             for _ in range(2):
-                await refresh_tokens(
+                refresh_tokens(
                     request=_fake_request(),
                     response=_fake_response(),
                     db=db,
@@ -296,7 +296,7 @@ class TestRefreshRejections:
         db = isolated_db()
         try:
             with pytest.raises(HTTPException) as exc:
-                await refresh_tokens(
+                refresh_tokens(
                     request=_fake_request(),
                     response=_fake_response(),
                     db=db,
@@ -318,7 +318,7 @@ class TestRefreshRejections:
         db = isolated_db()
         try:
             with pytest.raises(HTTPException) as exc:
-                await refresh_tokens(
+                refresh_tokens(
                     request=_fake_request(),
                     response=_fake_response(),
                     db=db,
@@ -350,7 +350,7 @@ class TestLogout:
         db = isolated_db()
         try:
             user = db.query(User).filter(User.id == seeded_user).first()
-            await logout(
+            logout(
                 request=req,
                 response=_fake_response(),
                 current_user=user,
@@ -402,7 +402,7 @@ class TestLogout:
         req = _fake_request()
         req.cookies = {ACCESS_TOKEN_COOKIE: access_token}
         alice = db.query(User).filter(User.id == seeded_user).first()
-        await logout(
+        logout(
             request=req,
             response=_fake_response(),
             current_user=alice,

@@ -180,29 +180,32 @@ class DatabaseTaskManager:
         error: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
+        values = {Task.status: status.value, Task.updated_at: datetime.now(timezone.utc)}
+        if status == TaskStatus.CANCELLED:
+            values[Task.is_cancelled] = True
+        if progress is not None:
+            values[Task.progress] = progress
+        if message is not None:
+            values[Task.message] = message
+        if result_data is not None:
+            values[Task.result_data] = result_data
+        if metadata is not None:
+            values[Task.metadata_json] = metadata
+        if error and status == TaskStatus.FAILED:
+            values[Task.message] = error
+
+        # One UPDATE instead of a read then a write: this runs on every progress step.
         session = SessionLocal()
         try:
-            row = session.query(Task).filter(Task.task_id == task_id).first()
-            if row is None:
+            updated = (
+                session.query(Task)
+                .filter(Task.task_id == task_id)
+                .update(values, synchronize_session=False)
+            )
+            session.commit()
+            if not updated:
                 logger.warning(f"Task not found for update: {task_id}")
                 return
-
-            row.status = status.value
-            row.updated_at = datetime.now(timezone.utc)
-            if status == TaskStatus.CANCELLED:
-                row.is_cancelled = True
-            if progress is not None:
-                row.progress = progress
-            if message is not None:
-                row.message = message
-            if result_data is not None:
-                row.result_data = result_data
-            if metadata is not None:
-                row.metadata_json = metadata
-            if error and status == TaskStatus.FAILED:
-                row.message = error
-
-            session.commit()
             logger.info(f"Updated task {task_id}: {status.value} ({progress}%)")
         except SQLAlchemyError as exc:
             session.rollback()

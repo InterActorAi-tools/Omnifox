@@ -361,11 +361,11 @@ async def process_cached_extraction_async(
 def _save_queue(queue_id: str, items: list, finished: bool = False):
     """Store the queue's per-link state on its task row; also keeps the row fresh for fail_stale_tasks."""
     done = sum(item["status"] not in ("queued", "running") for item in items)
-    if task_manager.is_task_cancelled(queue_id):
+    task = task_manager.get_task(queue_id)
+    if task.is_cancelled:
         status = TaskStatus.CANCELLED
     else:
         status = TaskStatus.COMPLETED if finished else TaskStatus.PROCESSING
-    task = task_manager.get_task(queue_id)
     task_manager.update_task_status(
         queue_id, status, int(100 * done / len(items)), f"{done} of {len(items)} links done",
         metadata={**task.metadata, "items": items},

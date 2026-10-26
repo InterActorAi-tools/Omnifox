@@ -44,7 +44,7 @@ class ChangePasswordRequest(BaseModel):
 # ================================================
 
 @router.post("/me/2fa/enable")
-async def enable_2fa(
+def enable_2fa(
     request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -71,7 +71,7 @@ async def enable_2fa(
     return {"qr_code_uri": qr_code_uri, "secret": secret}
 
 @router.post("/me/2fa/confirm")
-async def confirm_2fa(
+def confirm_2fa(
     data: Confirm2FARequest,
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -110,7 +110,7 @@ async def confirm_2fa(
     }
 
 @router.post("/me/2fa/disable")
-async def disable_2fa(
+def disable_2fa(
     data: Disable2FARequest,
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -254,14 +254,14 @@ async def reset_my_key(
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user_info(
+def get_current_user_info(
     current_user: User = Depends(get_current_user)
 ):
     """Get current user information"""
     return UserResponse.from_user(current_user)  # ← CHANGE THIS LINE
 
 @router.get("/me/sessions", response_model=list[SessionResponse])
-async def get_user_sessions(
+def get_user_sessions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -275,7 +275,7 @@ async def get_user_sessions(
     return sessions
 
 @router.get("/me/activity", response_model=list[ActivityLogResponse])
-async def get_user_activity(
+def get_user_activity(
     limit: int = 50,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -289,7 +289,7 @@ async def get_user_activity(
     return [activity_log_to_response(log) for log in activities] # <--- ✅ THIS IS THE FIX
 
 @router.delete("/me/sessions/{session_id}")
-async def delete_session(
+def delete_session(
     session_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -309,7 +309,7 @@ async def delete_session(
     return {"message": "Session deleted successfully"}
 
 @router.post("/me/logout-all")
-async def logout_all_devices(
+def logout_all_devices(
     request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -360,7 +360,7 @@ async def export_my_data(
 
 
 @router.delete("/me/results/{filename}")
-async def delete_my_result(
+def delete_my_result(
     filename: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -372,7 +372,7 @@ async def delete_my_result(
 
 
 @router.post("/me/delete-data")
-async def delete_my_data(
+def delete_my_data(
     data: ConfirmByEmailRequest,
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -386,7 +386,7 @@ async def delete_my_data(
 
 
 @router.post("/me/delete-account")
-async def delete_my_account(
+def delete_my_account(
     data: ConfirmByEmailRequest,
     response: Response,
     current_user: User = Depends(get_current_user),

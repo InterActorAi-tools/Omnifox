@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/simple-stats")
-async def get_simple_stats_with_dates(
+def get_simple_stats_with_dates(
     start_date: Optional[str] = Query(None, description="Start date in ISO format (YYYY-MM-DD)"),
     end_date: Optional[str] = Query(None, description="End date in ISO format (YYYY-MM-DD)"),
     preset: Optional[str] = Query(None, description="Preset range: last_7_days, last_30_days, last_60_days, last_90_days, this_month, last_month"),

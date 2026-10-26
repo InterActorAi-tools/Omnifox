@@ -8,7 +8,7 @@ const Graphs = lazy(() => import("./Graphs"));
 import AnalysisChat from "./AnalysisChat";
 import UrlQueue from "./UrlQueue";
 import { useSearchParams } from "react-router-dom";
-import { authService, endSession, notifyResultsChanged, RESULTS_CHANGED } from "../services/authService";
+import api, { authService, endSession, errorMessage, notifyResultsChanged, RESULTS_CHANGED } from "../services/authService";
 
 const Demo = ({ user }) => {
     // ✅ ALL STATE HOOKS
@@ -69,46 +69,6 @@ const Demo = ({ user }) => {
             clearInterval(tokenRefreshIntervalRef.current);
             tokenRefreshIntervalRef.current = null;
         }
-    };
-
-    // Wrapper around fetch that auto-refreshes on 401 before giving up.
-    // H10: credentials live in HttpOnly cookies, attached automatically
-    // when `credentials: "include"` is set. Mutating methods also need
-    // the X-CSRF-Token header echoed from the JS-readable XSRF cookie.
-    const authenticatedFetch = async (url, options = {}) => {
-        const buildOpts = () => {
-            const method = (options.method || "GET").toUpperCase();
-            const headers = { ...(options.headers || {}) };
-            if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
-                const csrfMatch = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
-                if (csrfMatch) {
-                    headers["X-CSRF-Token"] = decodeURIComponent(csrfMatch[1]);
-                }
-            }
-            return { ...options, credentials: "include", headers };
-        };
-
-        let response = await fetch(url, buildOpts());
-
-        if (response.status === 401) {
-            try {
-                await authService.refreshTokens();
-                response = await fetch(url, buildOpts());
-            } catch (refreshError) {
-                // Only a refused refresh ends the session (not a network error or 502).
-                if (refreshError.response?.status === 401) endSession();
-                return response;
-            }
-            if (response.status === 401) endSession();
-        }
-
-        return response;
-    };
-
-    // Use the backend's message (e.g. file too large, rate limited) when it is plain text.
-    const errorDetail = async (response, fallback) => {
-        const data = await response.json().catch(() => ({}));
-        return typeof data.detail === "string" ? data.detail : fallback;
     };
 
     // Fill the results view from a finished analysis (new, cached, opened
@@ -279,8 +239,7 @@ const Demo = ({ user }) => {
                     if (refreshError.response?.status === 401) return endSession();
                 }
                 if (unmountedRef.current || eventSourceRef.current !== evtSource) return;
-                const response = await authenticatedFetch(`${API_URL}/tasks/task_status/${taskId}`).catch(() => null);
-                const task = response?.ok ? await response.json() : null;
+                const task = await api.get(`/tasks/task_status/${taskId}`).then((res) => res.data).catch(() => null);
                 if (task?.status === "completed") fetchCompletedResults(taskId);
                 else if (task && ["extracting", "processing"].includes(task.status)) pollTaskStatus(taskId, taskType);
                 else stopWaiting(task?.status === "cancelled" ? "The analysis was cancelled." : "Lost track of the analysis. Check History for the result.");
@@ -299,28 +258,22 @@ const Demo = ({ user }) => {
 
     const fetchCompletedResults = async (taskId) => {
         try {
-            const response = await authenticatedFetch(`${API_URL}/tasks/task_status/${taskId}`, {
-                signal: AbortSignal.timeout(30000),
-            });
+            const { data } = await api.get(`/tasks/task_status/${taskId}`, { timeout: 30000 });
+            if (data.status === "completed" && data.data) {
+                const resultData = data.data;
+                setSearchParams({});
+                showResult(resultData.new_filename, resultData);
 
-            if (response.ok) {
-                const data = await response.json();
-                if (data.status === "completed" && data.data) {
-                    const resultData = data.data;
-                    setSearchParams({});
-                    showResult(resultData.new_filename, resultData);
+                setTimeout(() => {
+                    setShowGraphs(true);
+                    setIsProcessing(false);
+                    setIsUploading(false);
+                }, 1000);
 
-                    setTimeout(() => {
-                        setShowGraphs(true);
-                        setIsProcessing(false);
-                        setIsUploading(false);
-                    }, 1000);
+                localStorage.removeItem(`omnifox_active_task_${clientId}`);
 
-                    localStorage.removeItem(`omnifox_active_task_${clientId}`);
-
-                    notifyResultsChanged();
-                    return;
-                }
+                notifyResultsChanged();
+                return;
             }
             stopWaiting("Completed, but the results could not be loaded. Check History for the result.");
         } catch (error) {
@@ -357,81 +310,56 @@ const Demo = ({ user }) => {
         if (postContext) formData.append("post_context", postContext);
 
         try {
-            const response = await authenticatedFetch(`${API_URL}/upload/process/${clientId}`, {
-                method: "POST",
-                body: formData,
-                signal: AbortSignal.timeout(120000),
+            const { data } = await api.post(`/upload/process/${clientId}`, formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+                timeout: 120000,
             });
-
-            if (response.status === 409) {
-                // Another task is already running — resume it instead of erroring
-                const errData = await response.json().catch(() => ({}));
-                const existingTaskId = errData.detail?.match(/\(([^)]+)\)/)?.[1];
-                if (existingTaskId) {
-                    resumeTask(existingTaskId, "file", { selectedProject }, 0, "Resuming existing task...");
-                } else {
-                    // Task ID not in response body — ask the server which task is active
-                    try {
-                        const activeResp = await authenticatedFetch(`${API_URL}/tasks/me/active`);
-                        if (activeResp.ok) {
-                            const activeData = await activeResp.json();
-                            const active = activeData.active_task;
-                            if (active) {
-                                resumeTask(active.task_id, active.task_type || "file",
-                                    { selectedProject: active.metadata?.project }, active.progress, active.message);
-                                return;
-                            }
-                        }
-                    } catch { /* fall through to reset */ }
-                    // Could not locate the running task — reset UI cleanly
-                    setIsProcessing(false);
-                    setIsUploading(false);
-                    stopTokenRefreshInterval();
-                    setUploadStatus("A task is already running. Please refresh the page to resume it.");
-                }
-                return;
-            } else if (response.ok) {
-                const data = await response.json();
-                if (data.success && data.task_id) {
-                    setCurrentTaskId(data.task_id);
-                    updateProgressSmooth(5, "File uploaded, starting processing...");
-                    localStorage.setItem(
-                        `omnifox_active_task_${clientId}`,
-                        JSON.stringify({
-                            taskId: data.task_id,
-                            type: "file",
-                            fileName: file.name,
-                            selectedProject,
-                        })
-                    );
-                    setTimeout(() => pollTaskStatus(data.task_id, "file"), 1000);
-                } else {
-                    stopWaiting(data.message || "Error processing file.");
-                }
+            if (data.success && data.task_id) {
+                setCurrentTaskId(data.task_id);
+                updateProgressSmooth(5, "File uploaded, starting processing...");
+                localStorage.setItem(
+                    `omnifox_active_task_${clientId}`,
+                    JSON.stringify({
+                        taskId: data.task_id,
+                        type: "file",
+                        fileName: file.name,
+                        selectedProject,
+                    })
+                );
+                setTimeout(() => pollTaskStatus(data.task_id, "file"), 1000);
             } else {
-                setUploadStatus(await errorDetail(response, "Error processing file."));
-                setIsProcessing(false);
-                setIsUploading(false);
-                stopTokenRefreshInterval();
+                stopWaiting(data.message || "Error processing file.");
             }
         } catch (error) {
+            if (error.response?.status === 409) return resumeRunningTask(error.response.data?.detail, "file", { selectedProject });
             console.error("Upload error:", error);
-            setUploadStatus("Error uploading file.");
+            setUploadStatus(errorMessage(error, error.response ? "Error processing file." : "Error uploading file."));
             setIsProcessing(false);
             setIsUploading(false);
             stopTokenRefreshInterval();
         }
     };
 
+    // A task is already running (409): follow it instead of starting another.
+    const resumeRunningTask = async (detail, taskType, taskMeta) => {
+        const existingTaskId = typeof detail === "string" ? detail.match(/\(([^)]+)\)/)?.[1] : null;
+        if (existingTaskId) return resumeTask(existingTaskId, taskType, taskMeta, 0, "Resuming existing task...");
+        const active = await api.get("/tasks/me/active").then((res) => res.data.active_task).catch(() => null);
+        if (active) {
+            return resumeTask(active.task_id, active.task_type || taskType,
+                { ...taskMeta, selectedProject: active.metadata?.project }, active.progress, active.message);
+        }
+        setIsProcessing(false);
+        setIsUploading(false);
+        stopTokenRefreshInterval();
+        setUploadStatus("A task is already running. Please refresh the page to resume it.");
+    };
+
     // Links pasted or uploaded as a list: one per line (spaces and commas also separate them).
     const links = url.split(/[\s,]+/).filter((link) => /^https?:\/\//i.test(link));
     const queueRunning = queue?.status === "processing";
 
-    const loadQueue = async () => {
-        const response = await authenticatedFetch(`${API_URL}/tasks/me/queue`).catch(() => null);
-        if (response?.ok) return (await response.json()).queue;
-        return null;
-    };
+    const loadQueue = () => api.get("/tasks/me/queue").then((res) => res.data.queue).catch(() => null);
 
     // Follow a running queue until every link is done.
     useEffect(() => {
@@ -448,21 +376,17 @@ const Demo = ({ user }) => {
 
     const handleUrlQueue = async () => {
         setUploadStatus("");
-        const response = await authenticatedFetch(`${API_URL}/process_url_queue/${clientId}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ urls: links, project: selectedProject, post_context: postContext }),
-        }).catch(() => null);
-        if (response?.ok) {
-            setQueue({ ...(await response.json()), status: "processing" });
+        try {
+            const { data } = await api.post(`/process_url_queue/${clientId}`, { urls: links, project: selectedProject, post_context: postContext });
+            setQueue({ ...data, status: "processing" });
             setUrl("");
-        } else {
-            setUploadStatus(response ? await errorDetail(response, "Error queuing the links.") : "Error queuing the links.");
+        } catch (error) {
+            setUploadStatus(errorMessage(error, "Error queuing the links."));
         }
     };
 
     const cancelQueue = async () => {
-        await authenticatedFetch(`${API_URL}/tasks/cancel_task/${queue.queue_id}`, { method: "POST" }).catch(() => null);
+        await api.post(`/tasks/cancel_task/${queue.queue_id}`).catch(() => null);
         setQueue((await loadQueue()) || queue);
     };
 
@@ -494,87 +418,47 @@ const Demo = ({ user }) => {
         startTokenRefreshInterval();
 
         try {
-            const response = await authenticatedFetch(`${API_URL}/process_url/${clientId}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    url: url,
-                    project: selectedProject,
-                    post_context: postContext,
-                }),
-                signal: AbortSignal.timeout(120000),
-            });
+            const { data } = await api.post(`/process_url/${clientId}`, {
+                url: url,
+                project: selectedProject,
+                post_context: postContext,
+            }, { timeout: 120000 });
 
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success) {
-                    if (data.completed && data.cached) {
-                        updateProgressSmooth(100, "Cached results loaded!");
-                        stopTokenRefreshInterval();
-                        setTimeout(() => {
-                            setIsProcessing(false);
-                            setIsUploading(false);
-                            if (data.new_filename) {
-                                setSearchParams({});
-                                showResult(data.new_filename, { ...data, total_comments: data.comments_count || data.total_comments });
-                                setShowGraphs(true);
-                                notifyResultsChanged();
-                            } else {
-                                stopWaiting("The saved result is no longer available. Please run the analysis again.");
-                            }
-                        }, 1000);
-                    } else if (data.task_id) {
-                        setCurrentTaskId(data.task_id);
-                        updateProgressSmooth(5, data.message || "Starting extraction...");
-                        localStorage.setItem(
-                            `omnifox_active_task_${clientId}`,
-                            JSON.stringify({
-                                taskId: data.task_id,
-                                type: "url",
-                                url,
-                                selectedProject,
-                            })
-                        );
-                        setTimeout(() => pollTaskStatus(data.task_id, "url"), 1000);
-                    } else {
-                        stopWaiting(data.message || "Error processing URL.");
-                    }
-                } else {
-                    stopWaiting(data.message || "Error processing URL.");
-                }
-            } else if (response.status === 409) {
-                const errData = await response.json().catch(() => ({}));
-                const existingTaskId = errData.detail?.match(/\(([^)]+)\)/)?.[1];
-                if (existingTaskId) {
-                    resumeTask(existingTaskId, "url", { url, selectedProject }, 0, "Resuming existing task...");
-                } else {
-                    try {
-                        const activeResp = await authenticatedFetch(`${API_URL}/tasks/me/active`);
-                        if (activeResp.ok) {
-                            const activeData = await activeResp.json();
-                            const active = activeData.active_task;
-                            if (active) {
-                                resumeTask(active.task_id, active.task_type || "url",
-                                    { url, selectedProject: active.metadata?.project }, active.progress, active.message);
-                                return;
-                            }
-                        }
-                    } catch { /* fall through to reset */ }
+            if (data.success && data.completed && data.cached) {
+                updateProgressSmooth(100, "Cached results loaded!");
+                stopTokenRefreshInterval();
+                setTimeout(() => {
                     setIsProcessing(false);
                     setIsUploading(false);
-                    stopTokenRefreshInterval();
-                    setUploadStatus("A task is already running. Please refresh the page to resume it.");
-                }
-                return;
+                    if (data.new_filename) {
+                        setSearchParams({});
+                        showResult(data.new_filename, { ...data, total_comments: data.comments_count || data.total_comments });
+                        setShowGraphs(true);
+                        notifyResultsChanged();
+                    } else {
+                        stopWaiting("The saved result is no longer available. Please run the analysis again.");
+                    }
+                }, 1000);
+            } else if (data.success && data.task_id) {
+                setCurrentTaskId(data.task_id);
+                updateProgressSmooth(5, data.message || "Starting extraction...");
+                localStorage.setItem(
+                    `omnifox_active_task_${clientId}`,
+                    JSON.stringify({
+                        taskId: data.task_id,
+                        type: "url",
+                        url,
+                        selectedProject,
+                    })
+                );
+                setTimeout(() => pollTaskStatus(data.task_id, "url"), 1000);
             } else {
-                setUploadStatus(await errorDetail(response, "Error processing URL."));
-                setIsProcessing(false);
-                setIsUploading(false);
-                stopTokenRefreshInterval();
+                stopWaiting(data.message || "Error processing URL.");
             }
         } catch (error) {
+            if (error.response?.status === 409) return resumeRunningTask(error.response.data?.detail, "url", { url, selectedProject });
             console.error("URL error:", error);
-            setUploadStatus("Error uploading URL.");
+            setUploadStatus(errorMessage(error, error.response ? "Error processing URL." : "Error uploading URL."));
             setIsProcessing(false);
             setIsUploading(false);
             stopTokenRefreshInterval();
@@ -633,54 +517,41 @@ const Demo = ({ user }) => {
                 const stored = localStorage.getItem(`omnifox_active_task_${clientId}`);
                 if (stored) {
                     const taskData = JSON.parse(stored);
-                    const response = await authenticatedFetch(
-                        `${API_URL}/tasks/task_status/${taskData.taskId}`,
-                        { signal: AbortSignal.timeout(15000) }
-                    );
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (["extracting", "processing"].includes(data.status)) {
-                            resumeTask(taskData.taskId, taskData.type, taskData, data.progress, data.message);
-                            return;
-                        } else if (data.status === "completed") {
-                            await fetchCompletedResults(taskData.taskId);
-                        }
+                    const data = await api.get(`/tasks/task_status/${taskData.taskId}`, { timeout: 15000 })
+                        .then((res) => res.data).catch(() => null);
+                    if (["extracting", "processing"].includes(data?.status)) {
+                        resumeTask(taskData.taskId, taskData.type, taskData, data.progress, data.message);
+                        return;
+                    } else if (data?.status === "completed") {
+                        await fetchCompletedResults(taskData.taskId);
                     }
                     localStorage.removeItem(`omnifox_active_task_${clientId}`);
                     return;
                 }
 
                 // 2. No localStorage entry — ask the server (covers cross-device and post-logout scenarios)
-                const serverResponse = await authenticatedFetch(
-                    `${API_URL}/tasks/me/active`,
-                    { signal: AbortSignal.timeout(15000) }
-                );
-
-                if (serverResponse.ok) {
-                    const serverData = await serverResponse.json();
-                    const active = serverData.active_task;
-                    if (active?.task_type === "url_queue") {
-                        setQueue(await loadQueue());
-                        setActiveTab("url");
-                    } else if (active) {
-                        // Persist so future refreshes use the fast path
-                        localStorage.setItem(
-                            `omnifox_active_task_${clientId}`,
-                            JSON.stringify({
-                                taskId: active.task_id,
-                                type: active.task_type || "file",
-                                selectedProject: active.metadata?.project || "",
-                            })
-                        );
-                        resumeTask(
-                            active.task_id,
-                            active.task_type || "file",
-                            { selectedProject: active.metadata?.project },
-                            active.progress,
-                            active.message
-                        );
-                    }
+                const { data: serverData } = await api.get("/tasks/me/active", { timeout: 15000 });
+                const active = serverData.active_task;
+                if (active?.task_type === "url_queue") {
+                    setQueue(await loadQueue());
+                    setActiveTab("url");
+                } else if (active) {
+                    // Persist so future refreshes use the fast path
+                    localStorage.setItem(
+                        `omnifox_active_task_${clientId}`,
+                        JSON.stringify({
+                            taskId: active.task_id,
+                            type: active.task_type || "file",
+                            selectedProject: active.metadata?.project || "",
+                        })
+                    );
+                    resumeTask(
+                        active.task_id,
+                        active.task_type || "file",
+                        { selectedProject: active.metadata?.project },
+                        active.progress,
+                        active.message
+                    );
                 }
             } catch (error) {
                 console.error("Error checking resumable tasks:", error);
@@ -697,13 +568,10 @@ const Demo = ({ user }) => {
     useEffect(() => {
         const fetchProjects = async () => {
             try {
-                const response = await authenticatedFetch(`${API_URL}/projects`);
-                if (response.ok) {
-                    const data = await response.json();
-                    setAvailableProjects(data);
-                    // Nothing to choose when there is only one project.
-                    if (data.length === 1) setSelectedProject((current) => current || data[0].name);
-                }
+                const { data } = await api.get("/projects");
+                setAvailableProjects(data);
+                // Nothing to choose when there is only one project.
+                if (data.length === 1) setSelectedProject((current) => current || data[0].name);
             } catch (error) {
                 console.error("Failed to load projects", error);
             }
@@ -1003,10 +871,13 @@ const Demo = ({ user }) => {
                                         }
                                         stopTokenRefreshInterval();
 
-                                        const cancelResponse = await authenticatedFetch(`${API_URL}/tasks/cancel_task/${currentTaskId}`, {
-                                            method: "POST",
-                                        });
-                                        if (cancelResponse.status === 409) {
+                                        const cancelStatus = await api.post(`/tasks/cancel_task/${currentTaskId}`)
+                                            .then((res) => res.status)
+                                            .catch((error) => {
+                                                if (!error.response) throw error;
+                                                return error.response.status;
+                                            });
+                                        if (cancelStatus === 409) {
                                             // It finished just before the click: show the result instead.
                                             fetchCompletedResults(currentTaskId);
                                             return;

@@ -529,7 +529,7 @@ async def download_file(
         raise HTTPException(status_code=500, detail="Download failed")
 
 @app.get("/health")
-async def health_check():
+def health_check():
     """Liveness probe for the Docker healthcheck. Deliberately reveals nothing."""
     return {"status": "ok"}
 

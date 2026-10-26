@@ -100,7 +100,7 @@ class TestInviteLinkSource:
         db = isolated_db()
         try:
             current_admin = db.query(User).filter(User.id == admin_user).first()
-            result = await generate_invitation_link(
+            result = generate_invitation_link(
                 data=GenerateInviteRequest(
                     email="invitee@in2-comms.com",
                     name="Invitee",
@@ -132,7 +132,7 @@ class TestInviteLinkSource:
         db = isolated_db()
         try:
             current_admin = db.query(User).filter(User.id == admin_user).first()
-            result = await generate_invitation_link(
+            result = generate_invitation_link(
                 data=GenerateInviteRequest(
                     email="invitee2@in2-comms.com",
                     name="Invitee",
@@ -163,7 +163,7 @@ class TestInviteLinkSource:
         db = isolated_db()
         try:
             current_admin = db.query(User).filter(User.id == admin_user).first()
-            result = await generate_invitation_link(
+            result = generate_invitation_link(
                 data=GenerateInviteRequest(
                     email="invitee3@in2-comms.com",
                     name="Invitee",

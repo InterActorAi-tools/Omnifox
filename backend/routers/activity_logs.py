@@ -25,7 +25,7 @@ def _csv_safe(row: list) -> list:
     ]
 
 @router.get("/me", response_model=List[ActivityLogResponse])
-async def get_my_activity(
+def get_my_activity(
     action: Optional[str] = Query(None, description="Filter by action type"),
     start_date: Optional[datetime] = Query(None, description="Start date (ISO format)"),
     end_date: Optional[datetime] = Query(None, description="End date (ISO format)"),
@@ -58,7 +58,7 @@ async def get_my_activity(
     return [activity_log_to_response(log) for log in activities]
 
 @router.get("/me/export")
-async def export_my_activity(
+def export_my_activity(
     action: Optional[str] = Query(None),
     start_date: Optional[datetime] = Query(None),
     end_date: Optional[datetime] = Query(None),
@@ -106,7 +106,7 @@ async def export_my_activity(
     )
 
 @router.get("/me/stats", response_model=ActivityLogStats)
-async def get_my_activity_stats(
+def get_my_activity_stats(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -154,7 +154,7 @@ async def get_my_activity_stats(
 
 # Admin endpoints
 @router.get("/all", response_model=List[ActivityLogResponse])
-async def get_all_activity(
+def get_all_activity(
     user_id: Optional[int] = Query(None, description="Filter by user ID"),
     action: Optional[str] = Query(None, description="Filter by action type"),
     start_date: Optional[datetime] = Query(None),
@@ -186,7 +186,7 @@ async def get_all_activity(
     return [activity_log_to_response(log, admin_view=True) for log in activities]
 
 @router.get("/all/export")
-async def export_all_activity(
+def export_all_activity(
     user_id: Optional[int] = Query(None),
     action: Optional[str] = Query(None),
     start_date: Optional[datetime] = Query(None),
@@ -235,7 +235,7 @@ async def export_all_activity(
     )
 
 @router.get("/actions")
-async def get_available_actions(
+def get_available_actions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):

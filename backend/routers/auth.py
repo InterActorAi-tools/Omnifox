@@ -61,7 +61,7 @@ def _is_future(dt: datetime | None) -> bool:
 
 # 1. ADD THIS NEW ENDPOINT
 @router.get("/invitation/{token}")
-async def get_invitation_details(token: str, db: Session = Depends(get_db)):
+def get_invitation_details(token: str, db: Session = Depends(get_db)):
     """Get details of an invitation token"""
     invite = db.query(Invitation).filter(
         Invitation.token == token,
@@ -170,7 +170,7 @@ async def register(
     )
 
 @router.get("/password-requirements")
-async def get_requirements():
+def get_requirements():
     """Get password requirements for frontend display"""
     return get_password_requirements()
 
@@ -446,7 +446,7 @@ async def forgot_password(
 # ================================================
 @router.post("/reset-password")
 @limiter.limit("5/minute")  # H2
-async def reset_password(
+def reset_password(
     data: ResetPasswordRequest,
     request: Request,
     response: Response,  # slowapi writes rate-limit headers here
@@ -501,7 +501,7 @@ async def reset_password(
 
 @router.post("/google", response_model=TokenResponse)
 @limiter.limit("10/minute")  # H2
-async def google_login(
+def google_login(
     google_data: GoogleLogin,
     request: Request,
     response: Response,
@@ -627,7 +627,7 @@ async def google_login(
         )
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_tokens(
+def refresh_tokens(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
@@ -752,7 +752,7 @@ async def refresh_tokens(
     )
 
 @router.post("/logout")
-async def logout(
+def logout(
     request: Request,
     response: Response,
     current_user: User = Depends(get_current_user),

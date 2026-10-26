@@ -157,7 +157,7 @@ class TestTaskOwnership:
 
         monkeypatch.setattr(tasks_mod.task_manager, "get_task", lambda _id: self._task("bob@example.com"))
         with pytest.raises(HTTPException) as exc:
-            await tasks_mod.get_task_status_endpoint("t1", current_user=_user("alice@example.com"))
+            tasks_mod.get_task_status_endpoint("t1", current_user=_user("alice@example.com"))
         assert exc.value.status_code == 404
 
     @pytest.mark.asyncio
@@ -169,7 +169,7 @@ class TestTaskOwnership:
         monkeypatch.setattr(tasks_mod.task_manager, "get_task", lambda _id: self._task("bob@example.com"))
         monkeypatch.setattr(tasks_mod.task_manager, "cancel_task", lambda _id: cancelled.append(_id) or True)
         with pytest.raises(HTTPException) as exc:
-            await tasks_mod.cancel_task_endpoint("t1", request=_request(), current_user=_user("alice@example.com"), db=MagicMock())
+            tasks_mod.cancel_task_endpoint("t1", request=_request(), current_user=_user("alice@example.com"), db=MagicMock())
         assert exc.value.status_code == 404
         assert cancelled == []
 
@@ -178,7 +178,7 @@ class TestTaskOwnership:
         from api.routes import tasks as tasks_mod
 
         monkeypatch.setattr(tasks_mod.task_manager, "get_task", lambda _id: self._task("alice@example.com"))
-        result = await tasks_mod.get_task_status_endpoint("t1", current_user=_user("alice@example.com"))
+        result = tasks_mod.get_task_status_endpoint("t1", current_user=_user("alice@example.com"))
         assert result["task_id"] == "t1"
 
     @pytest.mark.asyncio
@@ -189,5 +189,5 @@ class TestTaskOwnership:
 
         monkeypatch.setattr(tasks_mod.task_manager, "get_task", lambda _id: self._task("Alice@Example.com"))
         with pytest.raises(HTTPException) as exc:
-            await tasks_mod.get_task_status_endpoint("t1", current_user=_user("alice@example.com"))
+            tasks_mod.get_task_status_endpoint("t1", current_user=_user("alice@example.com"))
         assert exc.value.status_code == 404

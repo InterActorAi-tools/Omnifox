@@ -67,7 +67,7 @@ def _pending_proposal(db: Session, user: User, filename: str, proposal_id: int) 
 
 
 @router.get("")
-async def list_results(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def list_results(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """My results from the last 30 days, newest first (works on any device)."""
     tasks = (db.query(Task)
              .filter(Task.client_id == current_user.email, Task.status == TaskStatus.COMPLETED.value)
@@ -96,7 +96,7 @@ async def get_result(filename: str, current_user: User = Depends(get_current_use
 
 
 @router.get("/{filename}/chat")
-async def get_chat(filename: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_chat(filename: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """The conversation so far, with proposals and their status."""
     return [{"id": m.id, "role": m.role, **m.content} for m in chat.history(db, current_user.email, filename)]
 
@@ -129,7 +129,7 @@ async def apply_proposal(
 
 
 @router.post("/{filename}/proposals/{proposal_id}/dismiss")
-async def dismiss_proposal(
+def dismiss_proposal(
     filename: str, proposal_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db),
 ):
     proposal = _pending_proposal(db, current_user, filename, proposal_id)

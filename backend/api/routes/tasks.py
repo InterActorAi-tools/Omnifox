@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 @router.get("/task_status/{task_id}")
-async def get_task_status_endpoint(
+def get_task_status_endpoint(
     task_id: str,
     current_user: User = Depends(get_current_user)
 ):
@@ -61,7 +61,7 @@ async def get_task_status_endpoint(
     return response
 
 @router.post("/cancel_task/{task_id}")
-async def cancel_task_endpoint(
+def cancel_task_endpoint(
     task_id: str,
     request: Request,
     current_user: User = Depends(get_current_user),
@@ -99,7 +99,7 @@ async def cancel_task_endpoint(
     }
 
 @router.get("/me/active")
-async def get_my_active_task(current_user: User = Depends(get_current_user)):
+def get_my_active_task(current_user: User = Depends(get_current_user)):
     """Return the caller's currently running task, if any.
 
     The client_id is derived from the user's email so it is stable across
@@ -130,7 +130,7 @@ async def get_my_active_task(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/me/queue")
-async def get_my_url_queue(current_user: User = Depends(get_current_user)):
+def get_my_url_queue(current_user: User = Depends(get_current_user)):
     """Return the caller's latest link queue (POST /api/process_url_queue), if any."""
     tasks = task_manager.get_client_tasks(current_user.email, limit=20)
     queue = next((t for t in tasks if t.task_type == "url_queue"), None)
