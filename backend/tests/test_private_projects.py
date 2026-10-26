@@ -50,6 +50,7 @@ def test_objectives_are_encrypted_at_rest(app_client):
 
 
 def test_owner_shares_with_named_users(app_client):
+    _login(app_client, "basic@example.com")  # sets up basic's personal key
     project = _create_private(app_client)
     resp = app_client.put(f"/api/projects/{project['id']}/shares", json={"emails": ["basic@example.com"]})
     assert resp.status_code == 200 and resp.json()["shared_with"] == ["basic@example.com"]
@@ -81,7 +82,7 @@ def test_only_admins_create_shared_projects(app_client):
 def test_upload_to_someone_elses_private_project_refused(app_client):
     _create_private(app_client)
     _login(app_client, "basic@example.com")
-    resp = app_client.post("/api/process/basic@example.com", data={"project": "Secret campaign"},
+    resp = app_client.post("/api/upload/process/basic@example.com", data={"project": "Secret campaign"},
                            files={"file": ("c.xlsx", b"PK", "application/octet-stream")})
     assert resp.status_code == 404
 

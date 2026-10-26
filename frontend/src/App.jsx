@@ -10,6 +10,7 @@ import ForgotPassword from './components/ForgotPassword';
 import ResetPassword from './components/ResetPassword';
 import Navbar from './components/Navbar';
 import ErrorBoundary from './components/ErrorBoundary';
+import RecoveryCodeNotice from './components/RecoveryCodeNotice';
 
 // Loaded on demand: the dashboard (charts) and profile (QR code) are not
 // needed to sign in or run an analysis.
@@ -116,6 +117,7 @@ const App = () => {
     <BrowserRouter>
       <ErrorBoundary>
         <PageTitle />
+        <RecoveryCodeNotice />
         <a href="#main-content" className="skip-link">Skip to main content</a>
         <div>
           <div className="main">

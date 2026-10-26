@@ -6,7 +6,8 @@ from schemas.auth import ActivityLogResponse, activity_log_to_response # <-- 1. 
 from database import get_db
 from models import User, RefreshToken, ActivityLog
 from schemas.auth import UserResponse, SessionResponse
-from utils.dependencies import get_current_user, log_activity
+from utils import keys
+from utils.dependencies import current_session, get_current_user, log_activity
 from utils.cookies import ACCESS_TOKEN_COOKIE, clear_auth_cookies
 from models import Role
 from services.privacy import delete_result, delete_user_data, export_user_data
@@ -169,8 +170,11 @@ async def change_current_user_password(
             detail=error_message
         )
     
-    # 3. Hash and save new password
+    # 3. Hash and save new password; the private-project key follows it
     current_user.hashed_password = hash_password(data.new_password)
+    private = keys.open_private_key(current_user, data.current_password)
+    if private:
+        keys.relock_private_key(current_user, private, data.new_password)
 
     # End all other sessions; keep the one making this request.
     token = request.cookies.get(ACCESS_TOKEN_COOKIE) or (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
@@ -185,6 +189,69 @@ async def change_current_user_password(
     log_activity(db, current_user.id, "change_password_success", request.client.host, request.headers.get("user-agent", "unknown"))
     
     return {"message": "Password changed successfully"}
+
+class RecoverKeyRequest(BaseModel):
+    recovery_code: str
+    password: str
+
+
+class ResetKeyRequest(BaseModel):
+    password: str
+
+
+def _require_password(user: User, password: str) -> None:
+    if not user.hashed_password or not verify_password(password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Invalid password")
+
+
+@router.get("/me/keys")
+async def get_my_keys(current_user: User = Depends(get_current_user)):
+    """Whether you have a private-project key and this session has it unlocked."""
+    return {"has_keys": bool(current_user.public_key), "unlocked": keys.is_unlocked(),
+            "has_password": bool(current_user.hashed_password)}
+
+
+@router.post("/me/keys/recover")
+@limiter.limit("5/minute", key_func=USER_OR_IP)
+async def recover_my_key(
+    data: RecoverKeyRequest,
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """After a password reset: unlock your key with the recovery code and lock it with the new password."""
+    _require_password(current_user, data.password)
+    private = keys.open_private_key(current_user, data.recovery_code, recovery=True)
+    if not private:
+        log_activity(db, current_user.id, "key_recovery_failed", request.client.host)
+        raise HTTPException(status_code=400, detail="That recovery code does not match")
+    keys.relock_private_key(current_user, private, data.password)
+    keys.start_session(db, current_user, current_session(request, db), response, {"private": private})
+    log_activity(db, current_user.id, "key_recovered", request.client.host)
+    return {"message": "Your private projects are unlocked again"}
+
+
+@router.post("/me/keys/reset")
+@limiter.limit("5/minute", key_func=USER_OR_IP)
+async def reset_my_key(
+    data: ResetKeyRequest,
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Without the recovery code: start over with a new key. Private projects
+    nobody else can open are deleted; owners must share theirs with you again."""
+    _require_password(current_user, data.password)
+    private, code, fields = keys.new_user_keys(data.password)
+    keys.drop_user_keys(db, current_user)
+    for name, value in fields.items():
+        setattr(current_user, name, value)
+    keys.start_session(db, current_user, current_session(request, db), response, {"private": private})
+    log_activity(db, current_user.id, "key_reset", request.client.host)
+    return {"recovery_code": code}
+
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(

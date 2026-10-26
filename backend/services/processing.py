@@ -10,6 +10,7 @@ import os
 import time
 import uuid
 import asyncio
+import contextvars
 import pandas as pd
 import logging
 from collections import Counter
@@ -107,7 +108,9 @@ class ProcessingService:
                 progress_callback(0, 100)
             
             loop = asyncio.get_event_loop()
-            file_data = await loop.run_in_executor(self.thread_pool, read_and_clean_excel_enhanced, file_path)
+            # copy_context: the thread must see a private project's key (utils/crypto.py)
+            file_data = await loop.run_in_executor(
+                self.thread_pool, contextvars.copy_context().run, read_and_clean_excel_enhanced, file_path)
             
             if not file_data or not file_data.get('texts'):
                 raise ValueError("No valid text found in file")
@@ -351,6 +354,7 @@ class ProcessingService:
             loop = asyncio.get_event_loop()
             excel_created = await loop.run_in_executor(
                 self.thread_pool,
+                contextvars.copy_context().run,
                 create_excel_with_charts_enhanced,
                 processed_data, output_path, sentiment_counts, category_counts,
                 positive_context, neutral_context, negative_context, summaries["overall"],

@@ -11,12 +11,13 @@ import shutil
 import zipfile
 from datetime import datetime, timedelta, timezone
 
+from cryptography.fernet import InvalidToken
 from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from config import UPLOAD_FOLDER
-from models import ActivityLog, ChatMessage, Invitation, Project, RefreshToken, Task, UrlCacheEntry, UsageRecord, User, project_shares
+from models import ActivityLog, ChatMessage, Invitation, Project, ProjectKey, RefreshToken, Task, UrlCacheEntry, UsageRecord, User, project_shares
 from simple_analytics import PRIVATE_PROJECT_LABEL
 from utils.crypto import read_file
 from utils.paths import safe_upload_path
@@ -93,6 +94,7 @@ def delete_user_data(db: Session, user: User, delete_account: bool = False) -> N
         delete_project(db, project)
     if delete_account:
         db.execute(project_shares.delete().where(project_shares.c.user_id == user.id))
+        db.query(ProjectKey).filter(ProjectKey.user_id == user.id).delete(synchronize_session=False)
         db.query(Project).filter(Project.owner_id == user.id).update({Project.owner_id: None}, synchronize_session=False)
         db.query(Invitation).filter(func.lower(Invitation.email) == email.lower()).delete(synchronize_session=False)
         db.delete(user)  # cascades to sessions and roles
@@ -148,7 +150,10 @@ def export_user_data(db: Session, user: User) -> bytes:
             for filename in sorted(os.listdir(folder)):
                 path = os.path.join(folder, filename)
                 if os.path.isfile(path) and not filename.endswith(".tmp"):
-                    zf.writestr(f"files/{filename}", read_file(path))
+                    try:
+                        zf.writestr(f"files/{filename}", read_file(path))
+                    except InvalidToken:  # a private project you no longer have the key for
+                        pass
     return buffer.getvalue()
 
 

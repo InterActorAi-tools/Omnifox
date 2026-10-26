@@ -74,6 +74,10 @@ class TokenResponse(BaseModel):
     token_type: str = "cookie"
     user: UserResponse
     requires_2fa: bool = False
+    # Private-project key (utils/keys.py): the recovery code is shown once,
+    # when the key is made; keys_locked means a reset password locked it.
+    recovery_code: Optional[str] = None
+    keys_locked: bool = False
 
 class SessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

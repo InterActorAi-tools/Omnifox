@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
+from cryptography.fernet import InvalidToken
 from sqlalchemy.orm import Session
 
 from config import UPLOAD_FOLDER
@@ -14,6 +15,7 @@ from task_manager import TaskStatus
 from services import chat
 from services.analysis import Analysis
 from services.gemini_service import get_gemini
+from utils import keys
 from utils.dependencies import get_current_user
 from utils.paths import safe_upload_path
 from utils.rate_limit import USER_OR_IP, limiter
@@ -48,7 +50,12 @@ async def _analysis(db: Session, user: User, filename: str) -> Analysis:
     if not os.path.exists(safe_upload_path(UPLOAD_FOLDER, user.email, filename)):
         raise HTTPException(status_code=404, detail="This result is no longer available.")
     # Decrypting and parsing the report is blocking work: keep it off the event loop.
-    return await asyncio.to_thread(Analysis, db, user.email, filename)
+    try:
+        analysis = await asyncio.to_thread(Analysis, db, user.email, filename)
+    except InvalidToken:
+        raise HTTPException(status_code=403, detail=keys.LOCKED)
+    keys.use_project(db, analysis.project)  # chat and edits stay under a private project's key
+    return analysis
 
 
 def _pending_proposal(db: Session, user: User, filename: str, proposal_id: int) -> ChatMessage:

@@ -171,7 +171,12 @@ def _cmd_rotate_key(_args: argparse.Namespace) -> int:
                     old = {c: v for c, v in zip(columns, row[1:]) if v}
                     if not old:
                         continue
-                    new = {f"new_{c}": rotate(v.encode()).decode() for c, v in old.items()}
+                    new = {f"new_{c}": rotate(v.encode()) for c, v in old.items()}
+                    # A private project's values are under its own key: leave them.
+                    old = {c: v for c, v in old.items() if new[f"new_{c}"] is not None}
+                    if not old:
+                        continue
+                    new = {f"new_{c}": new[f"new_{c}"].decode() for c in old}
                     sets = ", ".join(f"{c} = :new_{c}" for c in old)
                     same = " AND ".join(f"{c} = :old_{c}" for c in old)
                     result = conn.execute(text(f"UPDATE {table} SET {sets} WHERE {pk} = :pk AND {same}"),
@@ -191,9 +196,12 @@ def _cmd_rotate_key(_args: argparse.Namespace) -> int:
                     data = f.read()
                 if not is_encrypted(data):
                     continue
+                rotated = rotate(data)
+                if rotated is None:  # a private project's file
+                    continue
                 tmp = path + ".rotate.tmp"  # every .tmp is ignored by export and scans
                 with open(tmp, "wb") as f:
-                    f.write(rotate(data))
+                    f.write(rotated)
                 if os.path.getmtime(path) != modified:  # rewritten meanwhile: leave it for a re-run
                     os.remove(tmp)
                     continue

@@ -120,6 +120,8 @@ export default function Dashboard() {
     const [newProjectObjectives, setNewProjectObjectives] = useState("");
     const [newProjectPrivate, setNewProjectPrivate] = useState(false);
     const [sharingProject, setSharingProject] = useState(null);
+    const [keyStatus, setKeyStatus] = useState(null);
+    const [recovery, setRecovery] = useState({ code: "", password: "" });
     const [trendsProject, setTrendsProject] = useState(null);
     const [shareEmails, setShareEmails] = useState("");
     const [modalConfig, setModalConfig] = useState(null); 
@@ -169,6 +171,34 @@ export default function Dashboard() {
 
     const loadProjects = async () => {
         setProjects(await api.get("/projects").then((res) => res.data).catch(() => []));
+        setKeyStatus(await authService.getMyKeys().catch(() => null));
+    };
+
+    const handleRecoverKey = async (e) => {
+        e.preventDefault();
+        try {
+            await authService.recoverKey(recovery.code, recovery.password);
+            setRecovery({ code: "", password: "" });
+            loadProjects();
+            showModal("Your private projects are unlocked", "success");
+        } catch (error) {
+            showModal(errorMessage(error, "Could not unlock your private projects"), "error");
+        }
+    };
+
+    const handleResetKey = async () => {
+        if (!recovery.password) {
+            showModal("Enter your password first", "error");
+            return;
+        }
+        if (!window.confirm("Start over with a new key? Private projects that only you can open will be deleted, and owners will need to share theirs with you again.")) return;
+        try {
+            await authService.resetKey(recovery.password);
+            setRecovery({ code: "", password: "" });
+            loadProjects();
+        } catch (error) {
+            showModal(errorMessage(error, "Could not reset your key"), "error");
+        }
     };
 
     // --- HANDLERS (Identical Logic, kept compact) ---
@@ -475,6 +505,45 @@ export default function Dashboard() {
                                 </div>
                             )}
 
+                            {/* Private-project key status */}
+                            {canCreatePrivate && keyStatus && !keyStatus.has_password && (
+                                <p className="mb-6 p-4 text-sm bg-amber-50 border border-amber-200 rounded-xl text-amber-900">
+                                    Private projects are locked with your password, and your account signs in with Google only. Ask an admin to invite you with an email and password account to use them.
+                                </p>
+                            )}
+                            {keyStatus?.has_keys && keyStatus.has_password && !keyStatus.unlocked && (
+                                <DashboardCard className="mb-6 p-4 bg-amber-50 border-amber-200">
+                                    <form onSubmit={handleRecoverKey} className="flex flex-col gap-3">
+                                        <p className="text-sm text-amber-900">
+                                            Your private projects are locked. Sign in with your email and password to open them. If your password was reset, enter the recovery code you saved and your current password.
+                                        </p>
+                                        <div className="flex flex-col sm:flex-row gap-3">
+                                            <input
+                                                aria-label="Recovery code"
+                                                value={recovery.code}
+                                                onChange={(e) => setRecovery({ ...recovery, code: e.target.value })}
+                                                placeholder="Recovery code"
+                                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg font-mono"
+                                            />
+                                            <input
+                                                aria-label="Current password"
+                                                type="password"
+                                                value={recovery.password}
+                                                onChange={(e) => setRecovery({ ...recovery, password: e.target.value })}
+                                                placeholder="Current password"
+                                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                                            />
+                                            <button type="submit" className="px-4 py-2 bg-green-700 text-white rounded-lg font-medium hover:bg-green-800">
+                                                Unlock
+                                            </button>
+                                        </div>
+                                        <button type="button" onClick={handleResetKey} className="self-start text-sm text-amber-900 underline">
+                                            I lost my recovery code
+                                        </button>
+                                    </form>
+                                </DashboardCard>
+                            )}
+
                             {/* Project List */}
                             <DashboardCard>
                                 <ul className="divide-y divide-gray-100">
@@ -491,6 +560,7 @@ export default function Dashboard() {
                                                         <p className="font-bold text-gray-900 flex items-center gap-1">
                                                             {p.name}
                                                             {p.is_private && <AiOutlineLock className="text-gray-500" title="Private" aria-label="Private" />}
+                                                            {p.locked && <span className="text-xs font-normal text-amber-700">Locked</span>}
                                                         </p>
                                                         <p className="text-xs text-gray-500">ID: {p.id}</p>
                                                         {p.is_owner && p.shared_with.length > 0 && (
@@ -504,14 +574,14 @@ export default function Dashboard() {
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center">
-                                                    <button
+                                                    {!p.locked && <button
                                                         onClick={() => setTrendsProject(p)}
                                                         className="p-2 text-gray-500 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
                                                         title="Trends"
                                                         aria-label="Trends">
                                                         <AiOutlineLineChart size={20} />
-                                                    </button>
-                                                    {p.is_private && p.is_owner && (
+                                                    </button>}
+                                                    {p.is_private && p.is_owner && !p.locked && (
                                                         <button
                                                             onClick={() => openShareProject(p)}
                                                             className="p-2 text-gray-500 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"

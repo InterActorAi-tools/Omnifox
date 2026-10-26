@@ -54,10 +54,11 @@ def create_refresh_token(user_id: int) -> str:
     }
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
-def create_pending_2fa_token(user_id: int) -> str:
-    """Short-lived token proving the first login factor passed (5 min)."""
+def create_pending_2fa_token(user_id: int, keys: str | None = None) -> str:
+    """Short-lived token proving the first login factor passed (5 min).
+    `keys` carries the (encrypted) private-project key past the 2FA step."""
     expire = datetime.utcnow() + timedelta(minutes=5)
-    to_encode = {"sub": str(user_id), "exp": expire, "type": "2fa_pending"}
+    to_encode = {"sub": str(user_id), "exp": expire, "type": "2fa_pending", "keys": keys}
     return jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 def verify_token(token: str) -> dict | None:

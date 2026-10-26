@@ -144,6 +144,17 @@ api.interceptors.response.use(
     }
 );
 
+// A new private-project key comes with a recovery code, shown once
+// (RecoveryCodeNotice). Kept in sessionStorage so a page reload cannot lose it.
+export const RECOVERY_CODE_KEY = "recoveryCode";
+const rememberRecoveryCode = (data) => {
+    if (!data?.recovery_code) return;
+    try {
+        sessionStorage.setItem(RECOVERY_CODE_KEY, data.recovery_code);
+    } catch { /* storage blocked: the event below still shows it */ }
+    window.dispatchEvent(new CustomEvent("recovery-code", { detail: data.recovery_code }));
+};
+
 export const authService = {
     // Authentication
     async register(email, password, name, token) {
@@ -151,6 +162,7 @@ export const authService = {
         if (response.data?.user) {
             localStorage.setItem("user", JSON.stringify(response.data.user));
         }
+        rememberRecoveryCode(response.data);
         return response.data;
     },
 
@@ -164,6 +176,7 @@ export const authService = {
         if (response.data?.user && !response.data.requires_2fa) {
             localStorage.setItem("user", JSON.stringify(response.data.user));
         }
+        rememberRecoveryCode(response.data);
         return response.data;
     },
 
@@ -190,6 +203,24 @@ export const authService = {
         if (response.data?.user) {
             localStorage.setItem("user", JSON.stringify(response.data.user));
         }
+        rememberRecoveryCode(response.data);
+        return response.data;
+    },
+
+    // Private-project key
+    async getMyKeys() {
+        const response = await api.get("/users/me/keys");
+        return response.data;
+    },
+
+    async recoverKey(recovery_code, password) {
+        const response = await api.post("/users/me/keys/recover", { recovery_code, password });
+        return response.data;
+    },
+
+    async resetKey(password) {
+        const response = await api.post("/users/me/keys/reset", { password });
+        rememberRecoveryCode(response.data);
         return response.data;
     },
 

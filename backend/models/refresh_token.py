@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database import Base
@@ -15,6 +15,9 @@ class RefreshToken(Base):
     device_name = Column(EncryptedText, nullable=True)
     ip_address = Column(EncryptedText, nullable=True)
     user_agent = Column(EncryptedText, nullable=True)
+    # The user's private key, locked with a secret only the browser holds
+    # (the data_key cookie): the server can use it only during this session's requests.
+    data_key = Column(Text, nullable=True)
     
     is_revoked = Column(Boolean, default=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)

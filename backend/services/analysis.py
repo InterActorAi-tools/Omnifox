@@ -41,7 +41,9 @@ class Analysis:
              if (t.result_data or {}).get("new_filename") == filename), None)
         result = (self.task.result_data if self.task else None) or {}
         self.summaries: Dict[str, str] = {k: result.get(v, "") for k, v in SUMMARY_KEYS.items()}
-        self.post_context: str = ((self.task.metadata_json if self.task else None) or {}).get("post_context", "")
+        meta = (self.task.metadata_json if self.task else None) or {}
+        self.post_context: str = meta.get("post_context", "")
+        self.project: str = meta.get("project", "")
         self.objective_results = result.get("objective_results") or []
 
     def records(self):

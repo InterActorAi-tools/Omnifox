@@ -38,18 +38,21 @@ class ProjectResponse(BaseModel):
     name: str
     objectives: List[str] = []
     is_private: bool = False
+    locked: bool = False  # private, and this session cannot unlock its key
     is_owner: bool = False
     shared_with: List[str] = []  # emails; only filled in for the owner
     created_at: datetime
 
     @classmethod
     def for_user(cls, project, user) -> "ProjectResponse":
+        from utils.keys import project_key
         is_owner = project.owner_id == user.id
         return cls(
             id=project.id,
             name=project.name,
             objectives=project.objectives or [],
             is_private=project.is_private,
+            locked=project.is_private and project_key(project.id) is None,
             is_owner=is_owner,
             shared_with=[u.email for u in project.shared_with] if is_owner else [],
             created_at=project.created_at,

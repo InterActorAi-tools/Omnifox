@@ -34,6 +34,13 @@ class User(Base):
     two_factor_secret = Column(EncryptedText, nullable=True)
     two_factor_enabled = Column(Boolean, default=False)
     backup_codes = Column(Text, nullable=True)
+
+    # Personal key for private projects (utils/keys.py): an X25519 key pair whose
+    # private half is locked with the password, and again with a recovery code.
+    public_key = Column(String(64), nullable=True)
+    private_key_enc = Column(Text, nullable=True)
+    private_key_recovery = Column(Text, nullable=True)
+    key_salt = Column(String(64), nullable=True)
     
     # Security
     is_active = Column(Boolean, default=True)

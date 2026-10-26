@@ -41,6 +41,8 @@ from database import SessionLocal, run_migrations, get_db, bootstrap_lock
 from bootstrap import run_bootstrap
 from utils.dependencies import get_current_user, log_activity, authenticate_sse_cookie, require_client_ownership
 from utils.paths import safe_upload_path
+from cryptography.fernet import InvalidToken
+from utils import keys
 from utils.crypto import read_file
 from services.privacy import run_retention
 from utils.rate_limit import limiter, rate_limit_exceeded_handler, USER_OR_IP
@@ -461,6 +463,7 @@ async def process_url_queue_endpoint(
     if not urls or len(urls) > MAX_QUEUED_URLS:
         raise HTTPException(status_code=400, detail=f"Add between 1 and {MAX_QUEUED_URLS} links.")
     require_project_access(db, current_user, form_data.project)
+    keys.use_project(db, form_data.project)  # the queue and its links' results use a private project's key
     existing = task_manager.get_client_tasks(client_id, limit=5)
     if any(t.status in [TaskStatus.EXTRACTING, TaskStatus.PROCESSING] for t in existing):
         raise HTTPException(status_code=409, detail="A processing task is already running. Please wait for it to complete or cancel it first.")
@@ -501,7 +504,10 @@ async def download_file(
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="File not found")
 
-        content = read_file(file_path)
+        try:
+            content = read_file(file_path)
+        except InvalidToken:  # a private project this session cannot unlock
+            raise HTTPException(status_code=403, detail=keys.LOCKED)
         file_size = len(content)
 
         # Log download

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Table
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Table, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone  # <--- 1. Import timezone
 from database import Base
@@ -11,6 +11,15 @@ project_shares = Table(
     Column("project_id", Integer, ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True),
     Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
 )
+
+class ProjectKey(Base):
+    """A private project's key, sealed with one member's public key."""
+    __tablename__ = "project_keys"
+
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    sealed_key = Column(Text, nullable=False)
+
 
 class Project(Base):
     __tablename__ = "projects"
@@ -25,6 +34,7 @@ class Project(Base):
     owner_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     owner = relationship("User")
     shared_with = relationship("User", secondary=project_shares)
+    keys = relationship("ProjectKey", cascade="all, delete-orphan")
     snapshots = relationship("ProjectSnapshot", cascade="all, delete-orphan")
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

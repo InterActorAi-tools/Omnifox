@@ -34,6 +34,7 @@ from utils.cookies import (
     set_pending_2fa_cookie,
 )
 from utils.dependencies import find_user_by_email, log_activity, get_current_user
+from utils import keys
 from utils.rate_limit import limiter
 from utils.whitelist import require_whitelisted_email, get_default_roles_for_email
 from config import settings
@@ -161,9 +162,11 @@ async def register(
 
     # H10: tokens flow to the browser via HttpOnly cookies, not JSON.
     set_auth_cookies(response, access_token, refresh_token_str)
+    recovery_code = keys.start_session(db, new_user, refresh_record, response, keys.login_keys(new_user, user_data.password))
 
     return TokenResponse(
         user=UserResponse.from_user(new_user),
+        recovery_code=recovery_code,
     )
 
 @router.get("/password-requirements")
@@ -229,8 +232,9 @@ async def login(
     # Check 2FA - no session cookies are issued here. A short-lived
     # pending-2FA cookie proves the password step passed; /auth/verify-2fa
     # requires it so the second factor cannot be used on its own.
+    login_keys = keys.login_keys(user, credentials.password)
     if user.two_factor_enabled:
-        set_pending_2fa_cookie(response, create_pending_2fa_token(user.id))
+        set_pending_2fa_cookie(response, create_pending_2fa_token(user.id, keys.pack(login_keys)))
         return TokenResponse(
             user=UserResponse.from_user(user),
             requires_2fa=True,
@@ -266,9 +270,12 @@ async def login(
 
     # H10: cookies, not JSON tokens.
     set_auth_cookies(response, access_token, refresh_token_str)
+    recovery_code = keys.start_session(db, user, refresh_record, response, login_keys)
 
     return TokenResponse(
         user=UserResponse.from_user(user),
+        recovery_code=recovery_code,
+        keys_locked=bool(user.public_key) and not login_keys["private"],
     )
 
 # --- ADD THIS MODEL ---
@@ -387,9 +394,13 @@ async def verify_2fa(
 
     set_auth_cookies(response, access_token, refresh_token_str)  # H10
     clear_pending_2fa_cookie(response)
+    login_keys = keys.unpack(pending.get("keys"))
+    recovery_code = keys.start_session(db, user, refresh_record, response, login_keys)
 
     return TokenResponse(
         user=UserResponse.from_user(user),
+        recovery_code=recovery_code,
+        keys_locked=bool(user.public_key) and "private" in login_keys and not login_keys["private"],
     )
 
 
@@ -722,6 +733,7 @@ async def refresh_tokens(
         ip_address=request.client.host,
         user_agent=request.headers.get("user-agent", "Unknown")[:255],
         expires_at=datetime.utcnow() + timedelta(days=settings.refresh_token_expire_days),
+        data_key=stored_token.data_key,  # the browser's data_key cookie still unlocks it
     )
     db.add(new_record)
     db.commit()

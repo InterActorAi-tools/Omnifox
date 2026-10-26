@@ -4,7 +4,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database import get_db
 from models import User, RefreshToken
-from utils.cookies import ACCESS_TOKEN_COOKIE
+from utils import keys
+from utils.cookies import ACCESS_TOKEN_COOKIE, DATA_KEY_COOKIE
 from utils.security import verify_token
 
 # `auto_error=False`: we don't want HTTPBearer to raise 403 when the
@@ -32,7 +33,7 @@ def _extract_access_token(
     return None
 
 
-def _user_from_token(token: str, db: Session) -> User:
+def _user_from_token(token: str, db: Session, request: Request | None = None) -> User:
     """Validate a JWT and return the corresponding User row.
 
     Mirrors the previous inline logic in get_current_user. Lifted out
@@ -52,6 +53,7 @@ def _user_from_token(token: str, db: Session) -> User:
     # not been revoked. A revoked row is kept for refresh-token reuse
     # detection but its access tokens must stop working immediately.
     session_id = payload.get("session_id")
+    session = None
     if session_id:
         session = db.query(RefreshToken).filter(RefreshToken.id == session_id).first()
         if not session or session.is_revoked:
@@ -74,6 +76,8 @@ def _user_from_token(token: str, db: Session) -> User:
             detail="User not found or inactive",
         )
 
+    # Unlock this user's private-project keys for the rest of the request.
+    keys.unlock(db, user, session, request.cookies.get(DATA_KEY_COOKIE) if request else None)
     return user
 
 
@@ -96,7 +100,7 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
         )
-    return _user_from_token(token, db)
+    return _user_from_token(token, db, request)
 
 # 🔥 NEW: Role-based dependencies
 # 🔥 NEW: Permission-based dependencies
@@ -163,7 +167,14 @@ def authenticate_sse_cookie(request: Request, db: Session) -> User:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
         )
-    return _user_from_token(token, db)
+    return _user_from_token(token, db, request)
+
+
+def current_session(request: Request, db: Session) -> RefreshToken | None:
+    """The session (refresh-token row) this request's access token belongs to."""
+    payload = verify_token(_extract_access_token(request, None) or "") or {}
+    session_id = payload.get("session_id")
+    return db.get(RefreshToken, session_id) if session_id else None
 
 
 def log_activity(db: Session, user_id: int, action: str, ip: str = None, user_agent: str = None, extra: dict = None):

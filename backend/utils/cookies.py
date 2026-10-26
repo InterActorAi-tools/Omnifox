@@ -53,6 +53,8 @@ REFRESH_TOKEN_COOKIE = "refresh_token"
 CSRF_COOKIE = "XSRF-TOKEN"
 CSRF_HEADER = "X-CSRF-Token"
 PENDING_2FA_COOKIE = "pending_2fa"
+# Unlocks the user's private-project key for this session (utils/keys.py).
+DATA_KEY_COOKIE = "data_key"
 
 # Refresh token cookie is scoped to the refresh endpoint only. /api/auth
 # matches all auth endpoints; if we ever want even tighter scoping the
@@ -120,6 +122,17 @@ def set_auth_cookies(
     return csrf_token
 
 
+def set_data_key_cookie(response: Response, secret: str) -> None:
+    response.set_cookie(
+        DATA_KEY_COOKIE,
+        secret,
+        httponly=True,
+        path="/",
+        max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+        **_common_kwargs(),
+    )
+
+
 def clear_auth_cookies(response: Response) -> None:
     """Drop all three auth cookies. Called from /auth/logout."""
     # delete_cookie writes Max-Age=0 + an expired Expires for the named
@@ -128,6 +141,7 @@ def clear_auth_cookies(response: Response) -> None:
     response.delete_cookie(ACCESS_TOKEN_COOKIE, path="/")
     response.delete_cookie(REFRESH_TOKEN_COOKIE, path=REFRESH_TOKEN_PATH)
     response.delete_cookie(CSRF_COOKIE, path="/")
+    response.delete_cookie(DATA_KEY_COOKIE, path="/")
 
 
 def set_pending_2fa_cookie(response: Response, token: str) -> None:

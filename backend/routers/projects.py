@@ -13,6 +13,7 @@ from services import privacy
 from services.trends import project_trends
 
 # Import security dependency
+from utils import keys
 from utils.dependencies import find_user_by_email, get_current_user, log_activity
 
 
@@ -79,7 +80,12 @@ def create_project(
 
     new_project = Project(name=project.name, objectives=project.objectives,
                           is_private=project.is_private, owner_id=current_user.id)
-    db.add(new_project)
+    if new_project.is_private:
+        if not current_user.public_key:
+            raise HTTPException(status_code=400, detail="Sign in with your email and password once to set up private projects")
+        keys.create_project_key(db, new_project, current_user)
+    else:
+        db.add(new_project)
     db.commit()
     db.refresh(new_project)
     log_activity(db, current_user.id, "project_created", request.client.host, None,
@@ -100,15 +106,22 @@ def share_project(
     if not project.is_private or project.owner_id != current_user.id:
         raise HTTPException(status_code=403, detail="Only the owner can share a private project")
 
+    project_key = keys.project_key(project.id)
+    if project_key is None:
+        raise HTTPException(status_code=403, detail=keys.LOCKED)
+
     users = []
     for email in share.emails:
         user = find_user_by_email(db, email)
         if not user:
             raise HTTPException(status_code=404, detail=f"No user with email {email}")
+        if not user.public_key:
+            raise HTTPException(status_code=400, detail=f"{email} must sign in with their email and password once before you can share with them")
         if user.id != current_user.id and user not in users:
             users.append(user)
 
     project.shared_with = users
+    keys.seal_for(project, project_key, [current_user] + users)
     db.commit()
     log_activity(db, current_user.id, "project_shared", request.client.host, None,
                  {"project": project.name, "shared_with": [u.email for u in users]})
@@ -121,7 +134,10 @@ def get_project_trends(
     current_user: User = Depends(get_current_user)
 ):
     """How sentiment and each objective change across the project's uploads."""
-    return project_trends(_visible_project(db, current_user, project_id))
+    project = _visible_project(db, current_user, project_id)
+    if project.is_private and keys.project_key(project.id) is None:
+        raise HTTPException(status_code=403, detail=keys.LOCKED)
+    return project_trends(project)
 
 # 4. DELETE PROJECT (Used by Admin Dashboard)
 @router.delete("/{project_id}")

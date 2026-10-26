@@ -22,6 +22,7 @@ from utils.crypto import write_file
 from database import get_db
 from utils.dependencies import get_current_user, log_activity, require_client_ownership
 from routers.projects import require_project_access
+from utils import keys
 from utils.rate_limit import limiter, USER_OR_IP
 from models import User
 from task_manager import ProcessingTask, TaskStatus, task_manager, smooth_progress, user_error
@@ -57,6 +58,7 @@ async def process_uploaded_file(
         # caller attempting to operate against another user's namespace.
         require_client_ownership(client_id, current_user)
         require_project_access(db, current_user, project)
+        keys.use_project(db, project)  # a private project's files and results use its own key
         client_id = current_user.email  # canonical: never trust the case/spelling in the URL
 
         logger.info(f"User {current_user.id} uploaded a file for project {project}")

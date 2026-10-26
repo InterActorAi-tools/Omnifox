@@ -3,31 +3,57 @@
 Fernet = AES-128-CBC + HMAC-SHA256. DATA_ENCRYPTION_KEY may hold several
 comma-separated keys: the first encrypts, every key can decrypt, so a key
 can be rotated without losing old data.
+
+Private projects use their own key instead of the server's (utils/keys.py).
+While a request or job works on one, `use_write_key` makes everything it
+writes use that key, and `use_read_keys` lists the project keys the user has
+unlocked. A value nobody here can decrypt reads as None (locked).
 """
 import json
 import os
 import re
+from contextvars import ContextVar
 
-from cryptography.fernet import Fernet, MultiFernet
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 from sqlalchemy.types import Text, TypeDecorator
 
 from config import settings
 
 _fernet = MultiFernet([Fernet(k.strip()) for k in settings.data_encryption_key.split(",") if k.strip()])
 _BASE64URL = re.compile(rb"[A-Za-z0-9_-]+={0,2}")
+_write_key: ContextVar = ContextVar("write_key", default=None)
+_read_keys: ContextVar = ContextVar("read_keys", default=())
+
+
+def use_write_key(key) -> None:
+    """Encrypt with this private project's key (None: the server key)."""
+    _write_key.set(key)
+
+
+def use_read_keys(keys) -> None:
+    _read_keys.set(tuple(keys))
 
 
 def encrypt(data: bytes) -> bytes:
-    return _fernet.encrypt(data)
+    return (_write_key.get() or _fernet).encrypt(data)
 
 
 def decrypt(token: bytes) -> bytes:
-    return _fernet.decrypt(token)
+    """Raises InvalidToken if neither the server nor an unlocked project key fits."""
+    for key in (_fernet, *_read_keys.get()):
+        try:
+            return key.decrypt(token)
+        except InvalidToken:
+            pass
+    raise InvalidToken
 
 
-def rotate(token: bytes) -> bytes:
-    """Re-encrypt a token with the first (newest) key."""
-    return _fernet.rotate(token)
+def rotate(token: bytes) -> bytes | None:
+    """Re-encrypt a token with the first (newest) key; None for a private project's token."""
+    try:
+        return _fernet.rotate(token)
+    except InvalidToken:
+        return None
 
 
 def is_encrypted(data: bytes) -> bool:
@@ -80,7 +106,10 @@ class EncryptedText(TypeDecorator):
     def process_result_value(self, value, dialect):
         if value is None:
             return None
-        return decrypt(value.encode()).decode()
+        try:
+            return decrypt(value.encode()).decode()
+        except InvalidToken:
+            return None  # a private project's data this user cannot unlock
 
 
 class EncryptedJSON(EncryptedText):
@@ -93,6 +122,5 @@ class EncryptedJSON(EncryptedText):
         return super().process_bind_param(json.dumps(value, default=str), dialect)
 
     def process_result_value(self, value, dialect):
-        if value is None:
-            return None
-        return json.loads(super().process_result_value(value, dialect))
+        value = super().process_result_value(value, dialect)
+        return None if value is None else json.loads(value)
