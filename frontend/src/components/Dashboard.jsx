@@ -124,6 +124,8 @@ export default function Dashboard() {
     const [recovery, setRecovery] = useState({ code: "", password: "" });
     const [trendsProject, setTrendsProject] = useState(null);
     const [shareEmails, setShareEmails] = useState("");
+    const [editingProject, setEditingProject] = useState(null);
+    const [editObjectives, setEditObjectives] = useState("");
     const [modalConfig, setModalConfig] = useState(null); 
     const [confirmConfig, setConfirmConfig] = useState({ 
         isOpen: false, 
@@ -300,6 +302,23 @@ export default function Dashboard() {
             showModal("Sharing updated", "success");
         } catch (error) {
             showModal(errorMessage(error, "Failed to update sharing"), "error");
+        }
+    };
+
+    const openEditObjectives = (project) => {
+        setEditingProject(project);
+        setEditObjectives(project.objectives.join("\n"));
+    };
+
+    const handleEditObjectives = async (e) => {
+        e.preventDefault();
+        try {
+            await api.put(`/projects/${editingProject.id}/objectives`, { objectives: editObjectives.split("\n") });
+            setEditingProject(null);
+            loadProjects();
+            showModal("Objectives updated. New uploads are scored against them.", "success");
+        } catch (error) {
+            showModal(errorMessage(error, "Failed to update objectives"), "error");
         }
     };
 
@@ -590,6 +609,15 @@ export default function Dashboard() {
                                                             <AiOutlineShareAlt size={20} />
                                                         </button>
                                                     )}
+                                                    {(p.is_private ? p.is_owner : isAdmin) && !p.locked && (
+                                                        <button
+                                                            onClick={() => openEditObjectives(p)}
+                                                            className="p-2 text-gray-500 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                                                            title="Edit Objectives"
+                                                            aria-label="Edit Objectives">
+                                                            <AiOutlineEdit size={20} />
+                                                        </button>
+                                                    )}
                                                     {(p.is_private ? p.is_owner : isAdmin) && (
                                                         <button
                                                             onClick={() => confirmDeleteProject(p.id)}
@@ -607,6 +635,37 @@ export default function Dashboard() {
                             </DashboardCard>
 
                             {trendsProject && <ProjectTrends project={trendsProject} onClose={() => setTrendsProject(null)} />}
+
+                            {editingProject && (
+                                <Modal title={`Objectives for ${editingProject.name}`} onClose={() => setEditingProject(null)}>
+                                    <form onSubmit={handleEditObjectives}>
+                                        <label htmlFor="edit-objectives" className="block text-sm font-medium text-gray-700 mb-1">
+                                            Campaign objectives (one per line, up to 10)
+                                        </label>
+                                        <textarea
+                                            id="edit-objectives"
+                                            rows={6}
+                                            value={editObjectives}
+                                            onChange={(e) => setEditObjectives(e.target.value)}
+                                            className="w-full mb-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                        />
+                                        <p className="mb-6 text-xs text-gray-500">Past results keep the objectives they were scored on.</p>
+                                        <div className="flex flex-col sm:flex-row gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditingProject(null)}
+                                                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm sm:text-base">
+                                                Cancel
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                className="flex-1 px-4 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 text-sm sm:text-base">
+                                                Save
+                                            </button>
+                                        </div>
+                                    </form>
+                                </Modal>
+                            )}
 
                             {sharingProject && (
                                 <Modal title={`Share ${sharingProject.name}`} onClose={() => setSharingProject(null)}>

@@ -115,3 +115,18 @@ def test_admin_deletes_shared_project(app_client):
     project = app_client.post("/api/projects", json={"name": "Team"}).json()
     assert app_client.delete(f"/api/projects/{project['id']}").status_code == 200
     assert "Team" not in _names(app_client)
+
+
+def test_who_can_edit_objectives(app_client):
+    _login(app_client, "admin@example.com")
+    team = app_client.post("/api/projects", json={"name": "Team", "objectives": ["Old"]}).json()
+    url = f"/api/projects/{team['id']}/objectives"
+    assert app_client.put(url, json={"objectives": [f"o{k}" for k in range(11)]}).status_code == 422
+    assert app_client.put(url, json={"objectives": ["New"]}).json()["objectives"] == ["New"]
+
+    _login(app_client, "basic@example.com")
+    assert app_client.put(url, json={"objectives": []}).status_code == 403
+
+    secret = _create_private(app_client)
+    _login(app_client, "admin@example.com")
+    assert app_client.put(f"/api/projects/{secret['id']}/objectives", json={"objectives": []}).status_code == 404

@@ -194,3 +194,17 @@ def test_locked_project_trends_refused(app_client):
     assert app_client.get(f"/api/projects/{project['id']}/trends").status_code == 200
     app_client.cookies.delete("data_key")
     assert app_client.get(f"/api/projects/{project['id']}/trends").status_code == 403
+
+
+def test_edited_objectives_stay_under_project_key(app_client):
+    _create_private(app_client)
+    project = _project(app_client)
+    resp = app_client.put(f"/api/projects/{project['id']}/objectives", json={"objectives": ["Win trust", " Grow reach "]})
+    assert resp.status_code == 200 and resp.json()["objectives"] == ["Win trust", "Grow reach"]
+    with app_client.db() as db:
+        stored = db.execute(text("SELECT objectives FROM projects")).scalar()
+    with pytest.raises(InvalidToken):
+        _server_only_decrypt(stored)
+
+    app_client.cookies.delete("data_key")
+    assert app_client.put(f"/api/projects/{project['id']}/objectives", json={"objectives": []}).status_code == 403

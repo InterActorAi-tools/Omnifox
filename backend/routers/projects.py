@@ -8,7 +8,7 @@ from database import get_db
 from models import Project, User
 
 # Import schemas (Ensure you created schemas/projects.py as discussed)
-from schemas.projects import ProjectCreate, ProjectResponse, ProjectShare
+from schemas.projects import ProjectCreate, ProjectObjectives, ProjectResponse, ProjectShare
 from services import privacy
 from services.trends import project_trends
 
@@ -45,6 +45,11 @@ def _visible_project(db: Session, user: User, project_id: int) -> Project:
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+def _can_manage(project: Project, user: User) -> bool:
+    """Admins manage shared projects; only the owner manages a private one."""
+    return project.owner_id == user.id if project.is_private else user.has_role("admin")
 
 
 # 1. GET ALL PROJECTS (Used by User Demo & Admin Dashboard)
@@ -127,6 +132,27 @@ def share_project(
                  {"project": project.name, "shared_with": [u.email for u in users]})
     return ProjectResponse.for_user(project, current_user)
 
+# 4. EDIT OBJECTIVES (admins for shared projects, the owner for a private one)
+@router.put("/{project_id}/objectives", response_model=ProjectResponse)
+def update_objectives(
+    project_id: int,
+    update: ProjectObjectives,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Replace the campaign objectives. Past results keep the objectives they were scored on."""
+    project = _visible_project(db, current_user, project_id)
+    if not _can_manage(project, current_user):
+        raise HTTPException(status_code=403, detail="You cannot edit this project")
+
+    keys.use_project(db, project.name)  # a private project's objectives stay under its key
+    project.objectives = update.objectives
+    db.commit()
+    log_activity(db, current_user.id, "project_objectives_updated", request.client.host, None,
+                 {"project": project.name, "count": len(update.objectives)})
+    return ProjectResponse.for_user(project, current_user)
+
 @router.get("/{project_id}/trends")
 def get_project_trends(
     project_id: int,
@@ -139,7 +165,7 @@ def get_project_trends(
         raise HTTPException(status_code=403, detail=keys.LOCKED)
     return project_trends(project)
 
-# 4. DELETE PROJECT (Used by Admin Dashboard)
+# 5. DELETE PROJECT (Used by Admin Dashboard)
 @router.delete("/{project_id}")
 def delete_project(
     project_id: int,
@@ -149,8 +175,7 @@ def delete_project(
 ):
     """Admins delete shared projects; only the owner deletes a private one."""
     project = _visible_project(db, current_user, project_id)
-    allowed = project.owner_id == current_user.id if project.is_private else current_user.has_role("admin")
-    if not allowed:
+    if not _can_manage(project, current_user):
         raise HTTPException(status_code=403, detail="You cannot delete this project")
 
     name = project.name

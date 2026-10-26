@@ -5,6 +5,14 @@ from typing import List
 MAX_OBJECTIVES = 10
 MAX_OBJECTIVE_LEN = 500
 
+def clean_objectives(value: List[str]) -> List[str]:
+    value = list(dict.fromkeys(o.strip() for o in value if o.strip()))  # no blanks or repeats
+    if len(value) > MAX_OBJECTIVES:
+        raise ValueError(f"At most {MAX_OBJECTIVES} objectives")
+    if any(len(o) > MAX_OBJECTIVE_LEN for o in value):
+        raise ValueError(f"Each objective must be at most {MAX_OBJECTIVE_LEN} characters")
+    return value
+
 # 1. Validation for CREATING a project (Input)
 class ProjectCreate(BaseModel):
     name: str
@@ -21,13 +29,16 @@ class ProjectCreate(BaseModel):
 
     @field_validator("objectives")
     @classmethod
-    def clean_objectives(cls, value: List[str]) -> List[str]:
-        value = list(dict.fromkeys(o.strip() for o in value if o.strip()))  # no blanks or repeats
-        if len(value) > MAX_OBJECTIVES:
-            raise ValueError(f"At most {MAX_OBJECTIVES} objectives")
-        if any(len(o) > MAX_OBJECTIVE_LEN for o in value):
-            raise ValueError(f"Each objective must be at most {MAX_OBJECTIVE_LEN} characters")
-        return value
+    def check_objectives(cls, value: List[str]) -> List[str]:
+        return clean_objectives(value)
+
+class ProjectObjectives(BaseModel):
+    objectives: List[str] = Field(default_factory=list)
+
+    @field_validator("objectives")
+    @classmethod
+    def check_objectives(cls, value: List[str]) -> List[str]:
+        return clean_objectives(value)
 
 class ProjectShare(BaseModel):
     emails: List[EmailStr] = Field(default_factory=list, max_length=50)
