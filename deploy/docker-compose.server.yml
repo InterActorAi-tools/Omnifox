@@ -1,0 +1,64 @@
+# Single-server deploy: builds the images from this repo and serves them
+# over HTTPS through Caddy. See deploy/README.md.
+services:
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - SITE_ADDRESS=${SITE_ADDRESS:?SITE_ADDRESS is required}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+
+  backend:
+    build: ../backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://omnifox:${POSTGRES_PASSWORD}@db:5432/omnifox
+      - FRONTEND_URL=https://${SITE_ADDRESS}
+      - CORS_ORIGINS=https://${SITE_ADDRESS}
+      - ENVIRONMENT=production
+      - DEBUG=False
+      # Trust Caddy's X-Forwarded-For so activity logs show real client IPs.
+      - FORWARDED_ALLOW_IPS=*
+    volumes:
+      - uploads:/app/uploads
+      - cache:/app/cache
+
+  frontend:
+    build: ../frontend
+    restart: unless-stopped
+    environment:
+      - API_URL=https://${SITE_ADDRESS}/api
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-not-configured}
+
+  db:
+    image: postgres:18.1
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=omnifox
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_DB=omnifox
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omnifox -d omnifox"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  caddy_data:
+  pgdata:
+  uploads:
+  cache:
