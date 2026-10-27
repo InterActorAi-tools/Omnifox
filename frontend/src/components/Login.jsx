@@ -241,9 +241,7 @@ export default function Login({ onLoginSuccess }) {
 
               <div className="flex items-center justify-end">
                 <div className="text-sm">
-                 {/*  <Link to="/forgot-password" className="font-medium text-green-700 hover:text-green-800">
-                    Forgot your password?
-                  </Link>*/}
+                  <span className="text-gray-600">Forgot your password? Ask an admin for a reset link.</span>
                 </div>
               </div>
 

@@ -8,6 +8,7 @@ from models import User, Role, RefreshToken, Invitation
 from schemas.auth import UserResponse, SessionResponse
 from utils.dependencies import find_user_by_email, get_admin_user, log_activity
 from services.privacy import delete_user_data
+from utils.security import hash_token
 from utils.whitelist import require_whitelisted_email
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
@@ -100,6 +101,27 @@ def delete_user(
     log_activity(db, current_user.id, "admin_user_deleted", request.client.host, None, {"target_email": target_email})
 
     return {"message": "User deleted successfully"}
+
+# Make a password reset link to send by hand (no email server needed)
+@router.post("/users/{user_id}/reset-link")
+def create_reset_link(
+    user_id: int,
+    request: Request,
+    current_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Create a 1-hour password reset link for a user - Admin only"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    token = secrets.token_urlsafe(32)
+    user.reset_token_hash = hash_token(token)
+    user.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
+    db.commit()
+    log_activity(db, current_user.id, "admin_reset_link_created", request.client.host, None, {"target_email": user.email})
+
+    return {"link": f"{settings.frontend_url}/reset-password?token={token}"}
 
 # Get all available roles
 @router.get("/roles")

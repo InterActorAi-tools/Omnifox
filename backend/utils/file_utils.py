@@ -54,6 +54,11 @@ def read_and_clean_excel_enhanced(file_path: str) -> Dict[str, Any]:
         logger.error(f"Error reading Excel file: {str(e)}")
         raise ValueError(f"Error processing Excel file: {str(e)}")
 
+# Sentiment is stored as positive/negative/neutral; the file shows it as
+# alignment with the campaign.
+SENTIMENT_LABELS = {"positive": "Aligned", "negative": "Not aligned", "neutral": "Neutral"}
+
+
 def create_excel_with_charts_enhanced(processed_data: pd.DataFrame, output_path: str, 
                                     sentiment_counts: Dict[str, int], category_counts: Dict[str, int],
                                     positive_context: str, neutral_context: str, negative_context: str,
@@ -79,6 +84,8 @@ def create_excel_with_charts_enhanced(processed_data: pd.DataFrame, output_path:
             if len(processed_data) == 0:
                 logger.error("❌ No valid sentiment data remaining after filtering")
                 return False
+
+        processed_data = processed_data.assign(Sentiment=processed_data['Sentiment'].str.lower().map(SENTIMENT_LABELS))
 
         # Comments are untrusted text: never let "=..." become a live formula.
         buffer = io.BytesIO()
@@ -106,7 +113,7 @@ def create_excel_with_charts_enhanced(processed_data: pd.DataFrame, output_path:
             chart_col_letter = col_num_to_letter(chart_start_col)
             
             # Write chart data for sentiment
-            final_sentiment_counts = processed_data['Sentiment'].str.lower().value_counts().to_dict()
+            final_sentiment_counts = processed_data['Sentiment'].value_counts().to_dict()
             final_category_counts = processed_data['Category'].value_counts().to_dict()
 
             logger.info(f"📊 Final sentiment counts: {final_sentiment_counts}")
@@ -115,7 +122,7 @@ def create_excel_with_charts_enhanced(processed_data: pd.DataFrame, output_path:
             worksheet.write_row(f"{chart_col_letter}1", ["Sentiment", "Count"])
             row_index = 2
             for key, value in final_sentiment_counts.items():
-                worksheet.write_row(f"{chart_col_letter}{row_index}", [key.capitalize(), value])
+                worksheet.write_row(f"{chart_col_letter}{row_index}", [key, value])
                 row_index += 1
             
             # Write chart data for category
@@ -127,11 +134,11 @@ def create_excel_with_charts_enhanced(processed_data: pd.DataFrame, output_path:
             
             # Write sentiment contexts
             next_col_letter = col_num_to_letter(chart_start_col + 3)
-            worksheet.write_row(f"{next_col_letter}1", ["Positive Sentiment Context"])
+            worksheet.write_row(f"{next_col_letter}1", ["Aligned Context"])
             worksheet.write_row(f"{next_col_letter}2", [positive_context])
-            worksheet.write_row(f"{next_col_letter}4", ["Neutral Sentiment Context"])
+            worksheet.write_row(f"{next_col_letter}4", ["Neutral Context"])
             worksheet.write_row(f"{next_col_letter}5", [neutral_context])
-            worksheet.write_row(f"{next_col_letter}7", ["Negative Sentiment Context"])
+            worksheet.write_row(f"{next_col_letter}7", ["Not Aligned Context"])
             worksheet.write_row(f"{next_col_letter}8", [negative_context])
             worksheet.write_row(f"{next_col_letter}10", ["Overall Summary"])
             worksheet.write_row(f"{next_col_letter}11", [overall_summary])

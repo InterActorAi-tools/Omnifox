@@ -16,6 +16,7 @@ import {
     AiOutlineLock,
     AiOutlineShareAlt,
     AiOutlineLineChart,
+    AiOutlineKey,
 } from "react-icons/ai";
 import EnhancedDashboard from "./EnhancedDashboard";
 import Modal from "./Modal";
@@ -100,6 +101,7 @@ export default function Dashboard() {
 
     // Edit/Reset State
     const [editingUser, setEditingUser] = useState(null);
+    const [resetLink, setResetLink] = useState(null);
     const [selectedRoles, setSelectedRoles] = useState([]);
     const [roles, setRoles] = useState([]);
 
@@ -319,6 +321,15 @@ export default function Dashboard() {
             showModal("Objectives updated. New uploads are scored against them.", "success");
         } catch (error) {
             showModal(errorMessage(error, "Failed to update objectives"), "error");
+        }
+    };
+
+    const handleResetLink = async (u) => {
+        try {
+            const { data } = await api.post(`/admin/users/${u.id}/reset-link`);
+            setResetLink({ email: u.email, link: data.link });
+        } catch (error) {
+            showModal(errorMessage(error, "Failed to create a reset link"), "error");
         }
     };
 
@@ -603,10 +614,10 @@ export default function Dashboard() {
                                                     {p.is_private && p.is_owner && !p.locked && (
                                                         <button
                                                             onClick={() => openShareProject(p)}
-                                                            className="p-2 text-gray-500 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
+                                                            className="p-2 flex items-center gap-1 text-gray-500 hover:text-green-700 hover:bg-green-50 rounded-lg transition-colors"
                                                             title="Share Project"
                                                             aria-label="Share Project">
-                                                            <AiOutlineShareAlt size={20} />
+                                                            <AiOutlineShareAlt size={20} /><span className="text-sm">Share</span>
                                                         </button>
                                                     )}
                                                     {(p.is_private ? p.is_owner : isAdmin) && !p.locked && (
@@ -842,6 +853,13 @@ export default function Dashboard() {
                                                         aria-label="Edit Roles">
                                                         <AiOutlineEdit size={18} />
                                                     </button>
+                                                    <button
+                                                        onClick={() => handleResetLink(u)}
+                                                        className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg border border-transparent hover:border-green-200 transition-all"
+                                                        title="Reset Password"
+                                                        aria-label="Reset Password">
+                                                        <AiOutlineKey size={18} />
+                                                    </button>
                                                     {u.id !== user.id && (
                                                         <button
                                                             onClick={() => confirmDeleteUser(u.id)}
@@ -859,6 +877,33 @@ export default function Dashboard() {
                             </DashboardCard>
 
                             {/* MODALS */}
+                            {resetLink && (
+                                <Modal title={`Reset link for ${resetLink.email}`} onClose={() => setResetLink(null)}>
+                                    <p className="mb-3 text-sm text-gray-600">Send this link to them. It works once and expires in 1 hour.</p>
+                                    <div className="flex flex-col sm:flex-row gap-2 mb-6">
+                                        <input
+                                            readOnly
+                                            aria-label="Reset link"
+                                            value={resetLink.link}
+                                            className="flex-1 p-2 text-xs sm:text-sm border border-gray-200 rounded-md bg-gray-50 text-gray-600"
+                                        />
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(resetLink.link);
+                                                showModal("Link copied to clipboard", "success");
+                                            }}
+                                            className="px-4 py-2 bg-green-700 text-white rounded-md text-sm font-medium hover:bg-green-800 whitespace-nowrap">
+                                            Copy
+                                        </button>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setResetLink(null)}
+                                        className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm sm:text-base">
+                                        Close
+                                    </button>
+                                </Modal>
+                            )}
                             {editingUser && (
                                 <Modal title={`Edit Roles for ${editingUser.email}`} onClose={closeEditRoles}>
                                     <div className="space-y-3 mb-6">

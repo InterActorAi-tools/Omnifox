@@ -5,9 +5,9 @@ import api, { errorMessage } from "../services/authService";
 import Modal from "./Modal";
 
 const SENTIMENT_LINES = [
-    { key: "positive_percent", name: "Positive", color: "#2E7D38" },
+    { key: "positive_percent", name: "Aligned", color: "#2E7D38" },
     { key: "neutral_percent", name: "Neutral", color: "#666666" },
-    { key: "negative_percent", name: "Negative", color: "#C9443B" },
+    { key: "negative_percent", name: "Not aligned", color: "#C9443B" },
 ];
 const OBJECTIVE_COLORS = ["#2563EB", "#EA580C", "#7C3AED", "#0D9488", "#DB2777", "#CA8A04", "#4B5563", "#65A30D", "#0891B2", "#9F1239"];
 const TREND_LABELS = { rising: "▲ Rising", falling: "▼ Falling", steady: "● Steady" };
@@ -78,9 +78,9 @@ export default function ProjectTrends({ project, onClose }) {
                         {[
                             ["Uploads", trends.overall.uploads],
                             ["Comments", trends.overall.comments],
-                            ["Positive", percent(trends.overall.positive_percent)],
-                            ["Negative", percent(trends.overall.negative_percent)],
-                            ["Positive trend", <Trend key="t" trend={trends.overall.sentiment_trend} />],
+                            ["Aligned", percent(trends.overall.positive_percent)],
+                            ["Not aligned", percent(trends.overall.negative_percent)],
+                            ["Aligned trend", <Trend key="t" trend={trends.overall.sentiment_trend} />],
                         ].map(([label, value]) => (
                             <div key={label} className="p-3 bg-gray-50 rounded-lg border border-gray-100">
                                 <p className="text-xs text-gray-500">{label}</p>
@@ -89,7 +89,7 @@ export default function ProjectTrends({ project, onClose }) {
                         ))}
                     </div>
 
-                    <TrendChart title="Sentiment per upload" data={data} lines={SENTIMENT_LINES} />
+                    <TrendChart title="Alignment per upload" data={data} lines={SENTIMENT_LINES} />
 
                     {objectiveLines.length > 0 && (
                         <>
@@ -123,6 +123,12 @@ export default function ProjectTrends({ project, onClose }) {
                     )}
                 </>
             )}
+            <button
+                type="button"
+                onClick={onClose}
+                className="w-full mt-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm sm:text-base">
+                Close
+            </button>
         </Modal>
     );
 }

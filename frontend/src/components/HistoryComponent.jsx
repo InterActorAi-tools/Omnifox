@@ -92,9 +92,9 @@ export const HistoryModal = ({ isOpen, onClose, user }) => {
                     <div><dt className="inline text-gray-600">Date: </dt><dd className="inline">{formatDate(item.created_at)}</dd></div>
                     <div><dt className="inline text-gray-600">Project: </dt><dd dir="auto" className="inline font-semibold">{item.project || "N/A"}</dd></div>
                     <div><dt className="inline text-gray-600">Comments: </dt><dd className="inline font-semibold">{item.total_comments}</dd></div>
-                    <div><dt className="inline text-gray-600">Positive: </dt><dd className="inline font-semibold">{item.sentiment_counts?.positive || 0}</dd></div>
+                    <div><dt className="inline text-gray-600">Aligned: </dt><dd className="inline font-semibold">{item.sentiment_counts?.positive || 0}</dd></div>
                     <div><dt className="inline text-gray-600">Neutral: </dt><dd className="inline font-semibold">{item.sentiment_counts?.neutral || 0}</dd></div>
-                    <div><dt className="inline text-gray-600">Negative: </dt><dd className="inline font-semibold">{item.sentiment_counts?.negative || 0}</dd></div>
+                    <div><dt className="inline text-gray-600">Not aligned: </dt><dd className="inline font-semibold">{item.sentiment_counts?.negative || 0}</dd></div>
                   </dl>
                 </div>
                 <div className="flex gap-2 shrink-0">

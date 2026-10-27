@@ -15,7 +15,7 @@ from config import UPLOAD_FOLDER
 from models import ProjectSnapshot, Task, UrlCacheEntry
 from services.trends import snapshot_stats
 from utils.crypto import read_file
-from utils.file_utils import create_excel_with_charts_enhanced
+from utils.file_utils import SENTIMENT_LABELS, create_excel_with_charts_enhanced
 from utils.paths import safe_upload_path
 
 SUMMARY_KEYS = {"overall": "overall_summary", "positive": "positive_context",
@@ -36,6 +36,9 @@ class Analysis:
                               keep_default_na=False, na_values=[""], dtype=object)
         # ...and its rows can run below the last comment: drop the empty ones.
         self.rows = sheet.dropna(how="all").reset_index(drop=True)
+        # Files show Aligned/Not aligned; older files show Positive/Negative.
+        stored = {label.lower(): key for key, label in SENTIMENT_LABELS.items()}
+        self.rows["Sentiment"] = self.rows["Sentiment"].str.lower().replace(stored)
         self.task: Optional[Task] = next(
             (t for t in db.query(Task).filter(Task.client_id == email).all()
              if (t.result_data or {}).get("new_filename") == filename), None)

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { authService, errorMessage } from '../services/authService';
 
-const SUMMARY_LABELS = { overall: "Overall", positive: "Positive", neutral: "Neutral", negative: "Negative" };
+const SUMMARY_LABELS = { overall: "Overall", positive: "Aligned", neutral: "Neutral", negative: "Not aligned" };
 
 const label = ({ sentiment, category }) => `${sentiment} · ${category}`;
 

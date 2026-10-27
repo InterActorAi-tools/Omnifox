@@ -58,9 +58,9 @@ const Graphs = ({ downloadLink, sentimentCounts, positiveContext, neutralContext
     const negativePercentage = calculatePercentage(negativeCount);
 
     const pieData = [
-        { name: "Positive", value: Number(positivePercentage), color: "#2E7D38" },
+        { name: "Aligned", value: Number(positivePercentage), color: "#2E7D38" },
         { name: "Neutral", value: Number(neutralPercentage), color: "#666666" },
-        { name: "Negative", value: Number(negativePercentage), color: "#C9443B" },
+        { name: "Not aligned", value: Number(negativePercentage), color: "#C9443B" },
     ];
 
 
@@ -76,9 +76,9 @@ const Graphs = ({ downloadLink, sentimentCounts, positiveContext, neutralContext
             <dl className="flex flex-wrap justify-center gap-4 w-full">
                 {[
                     { label: "Total Comments", value: totalComments || 0, bg: "bg-white", text: "text-black" },
-                    { label: "Positive Comments", value: positiveCount, bg: "bg-[#2E7D38]", text: "text-white" },
+                    { label: "Aligned Comments", value: positiveCount, bg: "bg-[#2E7D38]", text: "text-white" },
                     { label: "Neutral Comments", value: neutralCount, bg: "bg-[#666666]", text: "text-white" },
-                    { label: "Negative Comments", value: negativeCount, bg: "bg-[#C9443B]", text: "text-white" },
+                    { label: "Not Aligned Comments", value: negativeCount, bg: "bg-[#C9443B]", text: "text-white" },
                 ].map(({ label, value, bg, text }) => (
                     <div key={label} className={`w-[160px] p-4 ${bg} ${text} rounded-lg shadow-md text-center flex flex-col-reverse`}>
                         <dt className="text-xs">{label}</dt>
@@ -90,14 +90,14 @@ const Graphs = ({ downloadLink, sentimentCounts, positiveContext, neutralContext
 
             {/* Graph: the counts above are its text alternative */}
             <p className="sr-only">
-                Sentiment share: {positivePercentage}% positive, {neutralPercentage}% neutral, {negativePercentage}% negative.
+                Sentiment share: {positivePercentage}% aligned, {neutralPercentage}% neutral, {negativePercentage}% not aligned.
             </p>
             <div className="flex justify-center w-full">
                 <div className="w-full max-w-lg bg-gray-100 rounded-lg p-4 sm:p-8 shadow-md">
                     {/* Responsive: fits narrow phones (the old chart was a fixed 400 px). */}
                     <div className="h-[240px]">
                         <ResponsiveContainer width="100%" height="100%">
-                            <PieChart title="Sentiment share" desc="Positive, neutral and negative share of analyzed comments.">
+                            <PieChart title="Sentiment share" desc="Aligned, neutral and not aligned share of analyzed comments.">
                                 <Pie data={pieData} dataKey="value" nameKey="name" outerRadius="70%" isAnimationActive={false} label={({ value }) => `${value}%`}>
                                     {pieData.map((slice) => (
                                         <Cell key={slice.name} fill={slice.color} />
@@ -137,9 +137,9 @@ const Graphs = ({ downloadLink, sentimentCounts, positiveContext, neutralContext
    {/* Larger Divs - Context */}
    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-3xl">
         {[
-          { title: "Positive Context", text: positiveContext, bg: "bg-[#2E7D38]" },
+          { title: "Aligned Context", text: positiveContext, bg: "bg-[#2E7D38]" },
           { title: "Neutral Context", text: neutralContext, bg: "bg-[#666666]" },
-          { title: "Negative Context", text: negativeContext, bg: "bg-[#C9443B]" }
+          { title: "Not Aligned Context", text: negativeContext, bg: "bg-[#C9443B]" }
         ].map(({ title, text, bg }, index) => (
           <div key={index} className={`p-4 ${bg} text-white rounded-lg shadow-md text-center`}>
             <h3 className="font-bold text-lg mb-2">{title}</h3>
