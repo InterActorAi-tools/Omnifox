@@ -4,7 +4,7 @@ import { authService, errorMessage } from '../services/authService';
 
 const SUMMARY_LABELS = { overall: "Overall", positive: "Aligned", neutral: "Neutral", negative: "Not aligned" };
 
-const label = ({ sentiment, category }) => `${sentiment} · ${category}`;
+const label = ({ sentiment, category }) => `${SUMMARY_LABELS[sentiment] || sentiment} · ${category}`;
 
 function Proposal({ proposal, busy, onApply, onDismiss }) {
     const relabel = proposal.type === "relabel";

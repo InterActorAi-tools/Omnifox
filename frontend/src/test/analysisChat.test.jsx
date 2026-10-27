@@ -42,7 +42,7 @@ describe("AnalysisChat relabel proposals", () => {
         render(<AnalysisChat filename="processed_a.xlsx" onUpdate={vi.fn()} />);
 
         expect(await screen.findByText("Proposed label changes (1)")).toBeInTheDocument();
-        expect(screen.getByText("negative · Governance")).toBeInTheDocument();
+        expect(screen.getByText("Not aligned · Governance")).toBeInTheDocument();
         expect(screen.getByRole("button", { name: "Apply 1 change" })).toBeInTheDocument();
     });
 });

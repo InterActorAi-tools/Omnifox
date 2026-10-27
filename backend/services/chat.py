@@ -32,6 +32,7 @@ Rules:
 - When the user wants different or better summaries (another focus, tone, length, language...), call propose_summary_update with their request. The user reviews the new summaries before they replace the current ones.
 - When the user says comments are mislabelled (wrong sentiment or category), find them (data table or search_comments) and call propose_relabel with their ids and the corrected labels. Only include comments that really match what the user described, and explain the rule you applied in `reason`. The user reviews every change before it is applied; summaries are then regenerated.
 - Never claim you changed anything yourself: changes only happen when the user presses Apply.
+- The user calls positive comments "aligned" and negative ones "not aligned" (with the campaign); use those words in replies.
 - Be concise. Plain text, short paragraphs or simple lists."""
 
 TOOLS = [types.Tool(function_declarations=[

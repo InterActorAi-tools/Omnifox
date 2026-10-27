@@ -230,8 +230,8 @@ export default function Dashboard() {
             setSelectedRoles([]);
             loadAdminData();
             showModal("Roles updated successfully", "success");
-        } catch {
-            showModal("Failed to update roles", "error");
+        } catch (error) {
+            showModal(errorMessage(error, "Failed to update roles"), "error");
         }
     };
 
@@ -346,6 +346,7 @@ export default function Dashboard() {
     const executeDelete = async () => {
         const { id, type } = confirmConfig;
         if (!id) return;
+        setConfirmConfig({ isOpen: false, id: null, type: null });
 
         try {
             // ✅ FIX 1: Use relative paths (remove BACKEND_URL)
@@ -359,10 +360,7 @@ export default function Dashboard() {
 
             showModal(`${type === 'project' ? "Project" : "User"} deleted successfully`, "success");
         } catch (error) {
-            console.error("Delete failed", error);
-            showModal("Failed to delete item", "error");
-        } finally {
-            setConfirmConfig({ isOpen: false, id: null, type: null });
+            showModal(errorMessage(error, "Failed to delete item"), "error");
         }
     };
 
@@ -746,7 +744,7 @@ export default function Dashboard() {
                                         <h3 className="font-bold text-gray-900 mb-4 text-sm sm:text-base">Invite New Team Member</h3>
                                         {generatedLink ? (
                                             <div className="bg-white p-3 sm:p-4 rounded-lg border border-green-200 shadow-sm">
-                                                <p className="text-green-700 font-medium mb-2 text-sm">✅ Invitation Link Generated</p>
+                                                <p className="text-green-700 font-medium mb-2 text-sm">✅ Invitation Link Generated (valid for 24 hours)</p>
                                                 <div className="flex flex-col sm:flex-row gap-2">
                                                     <input
                                                         readOnly
@@ -843,7 +841,7 @@ export default function Dashboard() {
                                                         aria-label="View Sessions">
                                                         <AiOutlineDesktop size={18} />
                                                     </button>
-                                                    <button
+                                                    {u.id !== user.id && <button
                                                         onClick={() => {
                                                             setEditingUser(u);
                                                             setSelectedRoles(u.roles || []);
@@ -852,7 +850,7 @@ export default function Dashboard() {
                                                         title="Edit Roles"
                                                         aria-label="Edit Roles">
                                                         <AiOutlineEdit size={18} />
-                                                    </button>
+                                                    </button>}
                                                     <button
                                                         onClick={() => handleResetLink(u)}
                                                         className="p-2 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg border border-transparent hover:border-green-200 transition-all"
@@ -879,7 +877,7 @@ export default function Dashboard() {
                             {/* MODALS */}
                             {resetLink && (
                                 <Modal title={`Reset link for ${resetLink.email}`} onClose={() => setResetLink(null)}>
-                                    <p className="mb-3 text-sm text-gray-600">Send this link to them. It works once and expires in 1 hour.</p>
+                                    <p className="mb-3 text-sm text-gray-600">Send this link to them. It works once and expires in 1 hour. If they have private projects, they will need their recovery code to open them again.</p>
                                     <div className="flex flex-col sm:flex-row gap-2 mb-6">
                                         <input
                                             readOnly
@@ -1067,7 +1065,7 @@ function AuditLogTab() {
                                 <option value="">All Actions</option>
                                 {availableActions.filter(Boolean).map((a) => (
                                     <option key={a} value={a}>
-                                        {a ? a.replace("_", " ") : a}
+                                        {a.replaceAll("_", " ")}
                                     </option>
                                 ))}
                             </select>
@@ -1122,7 +1120,7 @@ function AuditLogTab() {
                                 <div className="flex flex-col sm:flex-row gap-2 justify-between">
                                     <div className="min-w-0 flex-1">
                                         <p className="text-xs sm:text-sm font-medium text-gray-900 flex flex-wrap items-center gap-2">
-                                          <span>{log.action?.replace("_", " ") || log.action}</span>
+                                          <span>{log.action?.replaceAll("_", " ")}</span>
                                           <span className="text-xs font-normal text-gray-600 bg-gray-100 px-1.5 rounded">{log.user_email}</span>
                                         </p>
                                     </div>
