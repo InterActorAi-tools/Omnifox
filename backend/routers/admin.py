@@ -4,7 +4,7 @@ from typing import List
 
 from config import settings
 from database import get_db
-from models import User, Role, RefreshToken, Invitation
+from models import User, Role, RefreshToken, Invitation, JoinRequest
 from schemas.auth import UserResponse, SessionResponse
 from utils.dependencies import find_user_by_email, get_admin_user, log_activity
 from services.privacy import delete_user_data
@@ -19,6 +19,9 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 # Schemas
 class UpdateUserRolesRequest(BaseModel):
     role_names: List[str]
+
+class AcceptJoinRequest(BaseModel):
+    role: str = "basic_user"
 
 class GenerateInviteRequest(BaseModel):
     email: EmailStr
@@ -252,3 +255,59 @@ def generate_invitation_link(
         "token": token,
         "expires_at": invite.expires_at
     }
+
+# Join requests (people asking to join without an invitation)
+@router.get("/join-requests")
+def get_join_requests(
+    current_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Requests waiting for an admin - Admin only"""
+    requests = db.query(JoinRequest).order_by(JoinRequest.created_at).all()
+    return [{"id": r.id, "email": r.email, "name": r.name, "created_at": r.created_at} for r in requests]
+
+@router.post("/join-requests/{request_id}/accept", response_model=UserResponse)
+def accept_join_request(
+    request_id: int,
+    data: AcceptJoinRequest,
+    request: Request,
+    current_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Create the account with the password the person chose - Admin only"""
+    join = db.query(JoinRequest).filter(JoinRequest.id == request_id).first()
+    if not join:
+        raise HTTPException(status_code=404, detail="Request not found")
+    role = db.query(Role).filter(Role.name == data.role).first()
+    if not role:
+        raise HTTPException(status_code=400, detail=f"Unknown role '{data.role}'")
+    if find_user_by_email(db, join.email):
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+
+    user = User(email=join.email, name=join.name, hashed_password=join.hashed_password,
+                auth_provider="email", email_verified=True)
+    user.roles.append(role)
+    db.add(user)
+    db.delete(join)
+    db.commit()
+    db.refresh(user)
+    log_activity(db, current_user.id, "join_request_accepted", request.client.host, None,
+                 {"target_email": user.email, "role": role.name})
+    return UserResponse.from_user(user)
+
+@router.delete("/join-requests/{request_id}")
+def reject_join_request(
+    request_id: int,
+    request: Request,
+    current_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Reject a request; the person can ask again - Admin only"""
+    join = db.query(JoinRequest).filter(JoinRequest.id == request_id).first()
+    if not join:
+        raise HTTPException(status_code=404, detail="Request not found")
+    target_email = join.email
+    db.delete(join)
+    db.commit()
+    log_activity(db, current_user.id, "join_request_rejected", request.client.host, None, {"target_email": target_email})
+    return {"message": "Request rejected"}

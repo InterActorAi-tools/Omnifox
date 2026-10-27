@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from datetime import datetime, timedelta, timezone
-from models import Invitation
+from models import Invitation, JoinRequest
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,12 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 class Verify2FARequest(BaseModel):
     email: EmailStr
     code: str
+
+
+class JoinRequestCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
 
 
 REFRESH_REUSE_GRACE_SECONDS = 30
@@ -169,6 +175,30 @@ async def register(
         recovery_code=recovery_code,
     )
 
+@router.post("/join-request")
+@limiter.limit("5/hour")
+def request_to_join(
+    data: JoinRequestCreate,
+    request: Request,
+    response: Response,  # slowapi writes rate-limit headers here
+    db: Session = Depends(get_db)
+):
+    """Ask to join without an invitation. An admin accepts or rejects it."""
+    email = data.email.strip().lower()
+    require_whitelisted_email(email)  # @in2-comms.com only
+    is_valid, error_message = validate_password_strength(data.password)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_message)
+    if find_user_by_email(db, email):
+        raise HTTPException(status_code=400, detail="Email already registered")
+    if db.query(JoinRequest).filter(JoinRequest.email == email).first():
+        raise HTTPException(status_code=400, detail="A request for this email is already waiting for an admin")
+
+    db.add(JoinRequest(email=email, name=data.name.strip(), hashed_password=hash_password(data.password)))
+    db.commit()
+    return {"message": "Request sent. You can log in once an admin accepts it."}
+
+
 @router.get("/password-requirements")
 def get_requirements():
     """Get password requirements for frontend display"""
@@ -188,6 +218,9 @@ async def login(
     # Find user
     user = find_user_by_email(db, credentials.email)
     if not user:
+        pending = db.query(JoinRequest).filter(JoinRequest.email == credentials.email.strip().lower()).first()
+        if pending and verify_password(credentials.password, pending.hashed_password):
+            raise HTTPException(status_code=403, detail="Your request to join is waiting for an admin to accept it.")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"

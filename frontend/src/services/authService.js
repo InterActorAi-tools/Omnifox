@@ -77,6 +77,7 @@ api.interceptors.request.use(
 const AUTH_ENDPOINTS = [
     "/auth/login",
     "/auth/register",
+    "/auth/join-request",
     "/auth/verify-2fa",
     "/auth/google",
     "/auth/refresh",
@@ -163,6 +164,11 @@ export const authService = {
             localStorage.setItem("user", JSON.stringify(response.data.user));
         }
         rememberRecoveryCode(response.data);
+        return response.data;
+    },
+
+    async requestToJoin(name, email, password) {
+        const response = await api.post("/auth/join-request", { name, email, password });
         return response.data;
     },
 

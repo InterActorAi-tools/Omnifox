@@ -3,6 +3,7 @@ from .role import Role, Permission, role_permissions, user_roles
 from .refresh_token import RefreshToken
 from .activity_log import ActivityLog
 from .invitation import Invitation
+from .join_request import JoinRequest
 from .project import Project, ProjectKey, project_shares
 from .project_snapshot import ProjectSnapshot
 from .usage_record import UsageRecord
@@ -19,6 +20,7 @@ __all__ = [
     "RefreshToken",
     "ActivityLog",
     "Invitation",
+    "JoinRequest",
     "Project",
     "ProjectKey",
     "project_shares",

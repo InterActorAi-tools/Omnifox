@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { authService, errorMessage } from '../services/authService';
 import { AiOutlineEye, AiOutlineEyeInvisible } from 'react-icons/ai';
 import { wordmark } from '../assets';
@@ -168,12 +168,12 @@ export default function Login({ onLoginSuccess }) {
               <h1 className="mt-4 text-center text-2xl sm:text-3xl font-extrabold text-gray-900">
                 Sign in to OMNIFOX
               </h1>
-            {/*   <p className="mt-2 text-center text-sm text-gray-600">
-                Or{' '}
+              <p className="mt-2 text-center text-sm text-gray-600">
+                New here?{' '}
                 <Link to="/register" className="font-medium text-green-700 hover:text-green-800">
-                  create a new account
+                  Request to join
                 </Link>
-              </p>*/}
+              </p>
             </div>
 
             <form className="mt-6 space-y-6" onSubmit={handleSubmit}>

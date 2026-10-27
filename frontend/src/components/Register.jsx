@@ -23,6 +23,7 @@ export default function Register({ onLoginSuccess }) {
     });
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const [requestSent, setRequestSent] = useState(false);
 
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -77,12 +78,17 @@ export default function Register({ onLoginSuccess }) {
         }
 
         try {
-            // Pass the token to the register function
-            await authService.register(formData.email, formData.password, formData.name, token);
-            onLoginSuccess();
-            navigate("/app");
+            if (token) {
+                await authService.register(formData.email, formData.password, formData.name, token);
+                onLoginSuccess();
+                navigate("/app");
+            } else {
+                // No invitation: an admin has to accept the request first
+                await authService.requestToJoin(formData.name, formData.email, formData.password);
+                setRequestSent(true);
+            }
         } catch (err) {
-            setError(errorMessage(err, "Registration failed"));
+            setError(errorMessage(err, token ? "Registration failed" : "Could not send your request"));
         } finally {
             setLoading(false);
         }
@@ -90,12 +96,12 @@ export default function Register({ onLoginSuccess }) {
 
     const CheckIcon = ({ met }) => <span className={`text-sm ${met ? "text-green-700" : "text-gray-400"}`}>{met ? "✓" : "○"}</span>;
 
-    if (!token) {
+    if (requestSent) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
                 <div className="max-w-md w-full bg-white shadow-lg rounded-lg p-8 text-center">
-                    <h1 className="text-2xl font-bold text-red-700 mb-4">Access Denied</h1>
-                    <p className="text-gray-600 mb-6">Registration is by invitation only. You need a valid invite link to create an account.</p>
+                    <h1 className="text-2xl font-bold text-gray-900 mb-4">Request sent</h1>
+                    <p className="text-gray-600 mb-6">An admin will review it. You can log in with your email and password once they accept it.</p>
                     <Link to="/login" className="text-[#2E7D38] font-semibold hover:underline">
                         Go to Login
                     </Link>
@@ -108,7 +114,8 @@ export default function Register({ onLoginSuccess }) {
         <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
             <div className="max-w-md w-full bg-white shadow-xl rounded-2xl p-8 sm:p-10 space-y-6">
                 <div>
-                    <h1 className="mt-6 text-center text-3xl font-extrabold text-gray-900">Create your account</h1>
+                    <h1 className="mt-6 text-center text-3xl font-extrabold text-gray-900">{token ? "Create your account" : "Request to join"}</h1>
+                    {!token && <p className="mt-2 text-center text-sm text-gray-600">An admin has to accept your request before you can log in.</p>}
                     <p className="mt-2 text-center text-sm text-gray-600">
                         Or{" "}
                         <Link to="/login" className="font-medium text-green-700 hover:text-green-800">
@@ -134,9 +141,11 @@ export default function Register({ onLoginSuccess }) {
                                 autoComplete="name"
                                 name="name"
                                 type="text"
-                                readOnly
-                                className="mt-1 block w-full px-3 py-3 border border-gray-300 bg-gray-100 text-gray-700 rounded-md sm:text-sm cursor-not-allowed"
+                                readOnly={!!token}
+                                required
+                                className={`mt-1 block w-full px-3 py-3 border border-gray-300 rounded-md sm:text-sm ${token ? "bg-gray-100 text-gray-700 cursor-not-allowed" : "focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"}`}
                                 value={formData.name}
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                             />
                         </div>
 
@@ -149,9 +158,11 @@ export default function Register({ onLoginSuccess }) {
                                 autoComplete="email"
                                 name="email"
                                 type="email"
-                                readOnly // <--- READ ONLY
-                                className="mt-1 block w-full px-3 py-3 border border-gray-300 bg-gray-100 text-gray-700 rounded-md sm:text-sm cursor-not-allowed"
+                                readOnly={!!token}
+                                required
+                                className={`mt-1 block w-full px-3 py-3 border border-gray-300 rounded-md sm:text-sm ${token ? "bg-gray-100 text-gray-700 cursor-not-allowed" : "focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"}`}
                                 value={formData.email}
+                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                             />
                         </div>
 
@@ -238,7 +249,7 @@ export default function Register({ onLoginSuccess }) {
                             type="submit"
                             disabled={loading}
                             className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-[#2E7D38] hover:bg-[#256A2E] disabled:opacity-50">
-                            {loading ? "Creating account..." : "Sign up"}
+                            {loading ? "Sending..." : token ? "Sign up" : "Send request"}
                         </button>
                     </div>
                 </form>

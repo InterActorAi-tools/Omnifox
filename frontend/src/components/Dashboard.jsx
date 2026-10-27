@@ -91,6 +91,8 @@ export default function Dashboard() {
     const navigate = useNavigate();
     const [user, setUser] = useState(authService.getStoredUser());
     const [users, setUsers] = useState([]);
+    const [joinRequests, setJoinRequests] = useState([]);
+    const [joinRoles, setJoinRoles] = useState({});
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState("analytics");
 
@@ -162,12 +164,14 @@ export default function Dashboard() {
 
     const loadAdminData = async () => {
         try {
-            const [usersData, rolesData] = await Promise.all([
+            const [usersData, rolesData, requestsData] = await Promise.all([
                 api.get("/admin/users").then((res) => res.data),
                 api.get("/admin/roles").then((res) => res.data),
+                api.get("/admin/join-requests").then((res) => res.data),
             ]);
             setUsers(usersData);
             setRoles(rolesData);
+            setJoinRequests(requestsData);
         } catch (error) {
             console.error("Failed to load admin data:", error);
         }
@@ -220,6 +224,20 @@ export default function Dashboard() {
             showModal("Invitation link generated!", "success");
         } catch (error) {
             showModal(errorMessage(error, "Failed to generate invite"), "error");
+        }
+    };
+
+    const handleJoinRequest = async (r, accept) => {
+        try {
+            if (accept) {
+                await api.post(`/admin/join-requests/${r.id}/accept`, { role: joinRoles[r.id] || "basic_user" });
+            } else {
+                await api.delete(`/admin/join-requests/${r.id}`);
+            }
+            loadAdminData();
+            showModal(accept ? `${r.email} can now log in` : "Request rejected", "success");
+        } catch (error) {
+            showModal(errorMessage(error, "Failed to update the request"), "error");
         }
     };
 
@@ -389,7 +407,9 @@ export default function Dashboard() {
             <ConfirmModal 
                 isOpen={confirmConfig.isOpen}
                 title={confirmConfig.type === 'project' ? "Delete Project?" : "Delete User?"}
-                message="This action cannot be undone. Are you sure?"
+                message={confirmConfig.type === 'user'
+                    ? "Their results, files and the private projects they own are deleted too. This cannot be undone."
+                    : "This action cannot be undone. Are you sure?"}
                 onConfirm={executeDelete}
                 onCancel={() => setConfirmConfig({ ...confirmConfig, isOpen: false })}
             />
@@ -806,6 +826,42 @@ export default function Dashboard() {
                                         )}
                                     </DashboardCard>
                                 </div>
+                            )}
+
+                            {/* Join Requests */}
+                            {joinRequests.length > 0 && (
+                                <DashboardCard className="mb-4 sm:mb-6 border-amber-200">
+                                    <h3 className="px-4 pt-4 font-bold text-gray-900 text-sm sm:text-base">Requests to join</h3>
+                                    <ul className="divide-y divide-gray-100">
+                                        {joinRequests.map((r) => (
+                                            <li key={r.id} className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-bold text-gray-900 truncate">{r.name}</p>
+                                                    <p className="text-xs sm:text-sm text-gray-500 truncate">{r.email}</p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <select
+                                                        aria-label={`Role for ${r.email}`}
+                                                        value={joinRoles[r.id] || "basic_user"}
+                                                        onChange={(e) => setJoinRoles({ ...joinRoles, [r.id]: e.target.value })}
+                                                        className="px-2 py-2 border border-gray-300 rounded-lg text-sm">
+                                                        {roles.map((role) => <option key={role.name} value={role.name}>{role.name}</option>)}
+                                                    </select>
+                                                    <button
+                                                        onClick={() => handleJoinRequest(r, true)}
+                                                        className="px-3 py-2 bg-green-700 text-white rounded-lg text-sm font-medium hover:bg-green-800">
+                                                        Accept
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleJoinRequest(r, false)}
+                                                        className="px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-red-50 hover:text-red-700">
+                                                        Reject
+                                                    </button>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </DashboardCard>
                             )}
 
                             {/* Users List Card */}
