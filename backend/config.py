@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     # API Keys
     gemini_api_key: str = ""
     exportcomments_api_key: str = ""
+    # The ExportComments key is shared with OmniCat (5 jobs at once on our plan).
+    exportcomments_max_concurrent: int = 2
 
     # Auth
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./omnifox.db")
@@ -139,5 +141,6 @@ Path(settings.upload_folder).mkdir(exist_ok=True)
 UPLOAD_FOLDER = settings.upload_folder
 GEMINI_API_KEY = settings.gemini_api_key
 EXPORTCOMMENTS_API_KEY = settings.exportcomments_api_key
+EXPORTCOMMENTS_MAX_CONCURRENT = settings.exportcomments_max_concurrent
 GEMINI_MODEL = settings.gemini_model
 GEMINI_FALLBACK_MODEL = settings.gemini_fallback_model

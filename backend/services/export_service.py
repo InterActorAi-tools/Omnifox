@@ -5,13 +5,17 @@ import os
 import time
 import uuid
 import asyncio
+import fcntl
+import tempfile
+from contextlib import asynccontextmanager
 import aiohttp
 import pandas as pd
 import logging
 from exportcomments import ExportComments
+from exportcomments.exceptions import RateLimitError
 from typing import Dict, Any, Optional, List
 
-from config import EXPORTCOMMENTS_API_KEY, UPLOAD_FOLDER
+from config import EXPORTCOMMENTS_API_KEY, EXPORTCOMMENTS_MAX_CONCURRENT, UPLOAD_FOLDER
 from task_manager import TaskStatus, smooth_progress, user_error
 from utils.crypto import write_file
 from services.processing import ProcessingService
@@ -31,6 +35,39 @@ _EXPORTCOMMENTS_ALLOWED_HOSTS = (
 )
 
 logger = logging.getLogger(__name__)
+
+# One lock file per slot; flock works across the Gunicorn workers and is
+# released by the OS if a worker dies.
+EXPORT_SLOT_DIR = os.path.join(tempfile.gettempdir(), "omnifox_export_slots")
+
+
+@asynccontextmanager
+async def export_slot(task_id: str, task_manager: Any):
+    """Hold one of EXPORTCOMMENTS_MAX_CONCURRENT slots while an ExportComments job runs.
+
+    The API key is shared with OmniCat (5 jobs at once), so OmniFox keeps to a few.
+    """
+    os.makedirs(EXPORT_SLOT_DIR, exist_ok=True)
+    waiting = False
+    while True:
+        for n in range(EXPORTCOMMENTS_MAX_CONCURRENT):
+            lock = open(os.path.join(EXPORT_SLOT_DIR, f"{n}.lock"), "w")
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                lock.close()
+                continue
+            try:
+                yield
+            finally:
+                lock.close()  # releases the lock
+            return
+        if not waiting:
+            task_manager.update_task_status(task_id, TaskStatus.EXTRACTING, smooth_progress.get_smooth_progress('EXTRACTING', 0.0), "Waiting for other exports to finish...")
+            waiting = True
+        await asyncio.sleep(5)
+        if task_manager.is_task_cancelled(task_id):
+            raise asyncio.CancelledError
 
 class PlatformColumnMapper:
     """Enhanced mapper with reply support"""
@@ -227,6 +264,25 @@ class ExportCommentsService:
         'share_url',
     ]
 
+    async def _create_job(self, task_id: str, task_manager: Any, url: str):
+        """Start an export; while the shared key is at its limit (OmniCat runs jobs too), wait and try again."""
+        for attempt in range(40):  # about 20 minutes
+            try:
+                # The ExportComments SDK is synchronous (requests); run it in a
+                # thread so it does not block the worker's event loop.
+                return await asyncio.to_thread(
+                    self.export_client.jobs.create,
+                    url=url,
+                    options={"replies": True, "limit": 50000, "minTimestamp": 0},
+                )
+            except RateLimitError:
+                if attempt == 39:
+                    raise
+            task_manager.update_task_status(task_id, TaskStatus.EXTRACTING, smooth_progress.get_smooth_progress('EXTRACTING', 0.0), "ExportComments is busy, waiting for a free slot...")
+            await asyncio.sleep(30)
+            if task_manager.is_task_cancelled(task_id):
+                raise asyncio.CancelledError
+
     def flatten_nested_replies(self, raw_data: List[Dict]) -> List[Dict]:
         """Flatten nested replies into separate records, inheriting parent URL fields"""
         flattened_records = []
@@ -285,101 +341,96 @@ class ExportCommentsService:
             if post_context:
                 logger.info("📝 Extraction with post context")
 
-            try:
-                # The ExportComments SDK is synchronous (requests); run it in a
-                # thread so it does not block the worker's event loop.
-                job = await asyncio.to_thread(
-                    self.export_client.jobs.create,
-                    url=payload.url,
-                    options={"replies": True, "limit": 50000, "minTimestamp": 0},
-                )
-                guid = job.body["guid"]
-                detected_platform = self._detect_platform_from_url(payload.url)
-
-                task_manager.update_task_status(
-                    task_id, TaskStatus.EXTRACTING,
-                    smooth_progress.get_smooth_progress('EXTRACTING', 0.1),
-                    f"Export job created, extracting {detected_platform} comments with replies..."
-                )
-
-            except Exception as e:
-                task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, f"Failed to create export job: {user_error(e)}")
-                return
-
-            max_wait_attempts = 720
-            wait_attempt = 0
-            start_time = time.monotonic()
-            check = None  # Will hold the last successful check response
-
-            while wait_attempt < max_wait_attempts:
-                if task_manager.is_task_cancelled(task_id):
-                    task_manager.update_task_status(task_id, TaskStatus.CANCELLED, 0, "Extraction cancelled by user")
-                    return
-
+            async with export_slot(task_id, task_manager):
                 try:
-                    check = await asyncio.to_thread(self.export_client.jobs.check, guid=guid)
-                    body = check.body
-                    status = body.get("status", "unknown")
+                    job = await self._create_job(task_id, task_manager, payload.url)
+                    guid = job.body["guid"]
+                    detected_platform = self._detect_platform_from_url(payload.url)
 
-                    # --- Real progress from API -------------------------------------------
-                    # ExportComments returns `total` (expected) and `total_exported` (done so far).
-                    # Fall back to the legacy `percent` field if those are absent.
-                    total: int = int(body.get("total") or 0)
-                    total_exported: int = int(body.get("total_exported") or body.get("commentsCount") or 0)
-
-                    if total > 0:
-                        real_pct = min(total_exported / total, 1.0)  # 0.0 – 1.0
-                    else:
-                        # API hasn't reported totals yet — use legacy percent or time-based fallback
-                        legacy_pct = int(body.get("percent", 0))
-                        real_pct = legacy_pct / 100 if legacy_pct else min(0.9, wait_attempt / max_wait_attempts)
-
-                    # Map into the EXTRACTING phase bucket kept under 95 % until truly done
-                    extraction_fraction = real_pct * 0.95
-                    current_progress = smooth_progress.get_smooth_progress('EXTRACTING', extraction_fraction)
-
-                    elapsed_s = time.monotonic() - start_time
-                    if total > 0:
-                        message = (
-                            f"Extracting {detected_platform} comments... "
-                            f"({total_exported:,}/{total:,} | {elapsed_s:.0f}s)"
-                        )
-                    else:
-                        elapsed_min = int(elapsed_s // 60)
-                        message = f"Extracting {detected_platform} comments... ({elapsed_min}min)"
-
-                    logger.info(
-                        f"[{task_id}] status={status} | {total_exported}/{total} "
-                        f"({real_pct*100:.1f}%) | progress={current_progress}"
+                    task_manager.update_task_status(
+                        task_id, TaskStatus.EXTRACTING,
+                        smooth_progress.get_smooth_progress('EXTRACTING', 0.1),
+                        f"Export job created, extracting {detected_platform} comments with replies..."
                     )
-                    task_manager.update_task_status(task_id, TaskStatus.EXTRACTING, current_progress, message)
-
-                    if status == "done":
-                        task_manager.update_task_status(
-                            task_id, TaskStatus.EXTRACTING,
-                            smooth_progress.get_smooth_progress('EXTRACTING', 1.0),
-                            f"Extraction complete — {total_exported:,} comment(s) downloaded, preparing data..."
-                        )
-                        break
-                    elif status == "error":
-                        error_msg = body.get("error") or body.get("message") or "Unknown API error"
-                        task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, f"Export failed: {error_msg}")
-                        return
-                    elif status == "stopped":
-                        task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, "Export job was stopped on API side")
-                        return
-
-                    await asyncio.sleep(10)
-                    wait_attempt += 1
 
                 except Exception as e:
-                    logger.error(f"Error checking job status: {str(e)}")
-                    await asyncio.sleep(10)
-                    wait_attempt += 1
+                    task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, f"Failed to create export job: {user_error(e)}")
+                    return
 
-            if wait_attempt >= max_wait_attempts:
-                task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, "Export timed out after 2 hours")
-                return
+                max_wait_attempts = 720
+                wait_attempt = 0
+                start_time = time.monotonic()
+                check = None  # Will hold the last successful check response
+
+                while wait_attempt < max_wait_attempts:
+                    if task_manager.is_task_cancelled(task_id):
+                        task_manager.update_task_status(task_id, TaskStatus.CANCELLED, 0, "Extraction cancelled by user")
+                        return
+
+                    try:
+                        check = await asyncio.to_thread(self.export_client.jobs.check, guid=guid)
+                        body = check.body
+                        status = body.get("status", "unknown")
+
+                        # --- Real progress from API -------------------------------------------
+                        # ExportComments returns `total` (expected) and `total_exported` (done so far).
+                        # Fall back to the legacy `percent` field if those are absent.
+                        total: int = int(body.get("total") or 0)
+                        total_exported: int = int(body.get("total_exported") or body.get("commentsCount") or 0)
+
+                        if total > 0:
+                            real_pct = min(total_exported / total, 1.0)  # 0.0 – 1.0
+                        else:
+                            # API hasn't reported totals yet — use legacy percent or time-based fallback
+                            legacy_pct = int(body.get("percent", 0))
+                            real_pct = legacy_pct / 100 if legacy_pct else min(0.9, wait_attempt / max_wait_attempts)
+
+                        # Map into the EXTRACTING phase bucket kept under 95 % until truly done
+                        extraction_fraction = real_pct * 0.95
+                        current_progress = smooth_progress.get_smooth_progress('EXTRACTING', extraction_fraction)
+
+                        elapsed_s = time.monotonic() - start_time
+                        if total > 0:
+                            message = (
+                                f"Extracting {detected_platform} comments... "
+                                f"({total_exported:,}/{total:,} | {elapsed_s:.0f}s)"
+                            )
+                        else:
+                            elapsed_min = int(elapsed_s // 60)
+                            message = f"Extracting {detected_platform} comments... ({elapsed_min}min)"
+
+                        logger.info(
+                            f"[{task_id}] status={status} | {total_exported}/{total} "
+                            f"({real_pct*100:.1f}%) | progress={current_progress}"
+                        )
+                        task_manager.update_task_status(task_id, TaskStatus.EXTRACTING, current_progress, message)
+
+                        if status == "done":
+                            task_manager.update_task_status(
+                                task_id, TaskStatus.EXTRACTING,
+                                smooth_progress.get_smooth_progress('EXTRACTING', 1.0),
+                                f"Extraction complete — {total_exported:,} comment(s) downloaded, preparing data..."
+                            )
+                            break
+                        elif status == "error":
+                            error_msg = body.get("error") or body.get("message") or "Unknown API error"
+                            task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, f"Export failed: {error_msg}")
+                            return
+                        elif status == "stopped":
+                            task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, "Export job was stopped on API side")
+                            return
+
+                        await asyncio.sleep(10)
+                        wait_attempt += 1
+
+                    except Exception as e:
+                        logger.error(f"Error checking job status: {str(e)}")
+                        await asyncio.sleep(10)
+                        wait_attempt += 1
+
+                if wait_attempt >= max_wait_attempts:
+                    task_manager.update_task_status(task_id, TaskStatus.FAILED, 0, "Export timed out after 2 hours")
+                    return
 
             task_manager.update_task_status(
                 task_id, TaskStatus.EXTRACTING,

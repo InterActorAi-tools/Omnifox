@@ -1,7 +1,12 @@
 """URL extraction pipeline behind POST /api/process_url (see main.py)."""
 import asyncio
+import io
 import logging
+import re
 import uuid
+
+import openpyxl
+import pandas as pd
 from fastapi import HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -14,6 +19,7 @@ from models import User
 from cache_service import cache_service
 from services.export_service import ExportCommentsService, process_and_cache
 from task_manager import task_manager, TaskStatus, ProcessingTask, user_error
+from utils.file_utils import SENTIMENT_LABELS
 
 logger = logging.getLogger(__name__)
 
@@ -357,3 +363,62 @@ async def run_url_queue(queue_id: str, client_id: str, user_id: int, payload: UR
         if item["status"] == "queued":
             item["status"] = "cancelled"
     _save_queue(queue_id, items, finished=True)
+
+
+LINK = re.compile(r"https?://[^\s,;\"'<>]+", re.IGNORECASE)
+
+
+def links_in_workbook(data: bytes) -> list:
+    """Every link in an Excel list: cell text and cell hyperlinks, on any sheet, in order."""
+    book = openpyxl.load_workbook(io.BytesIO(data), data_only=True)
+    found = []
+    for sheet in book.worksheets:
+        for row in sheet.iter_rows():
+            for cell in row:
+                if cell.hyperlink and cell.hyperlink.target:
+                    found.append(cell.hyperlink.target)
+                if isinstance(cell.value, str):
+                    found += LINK.findall(cell.value)
+    return list(dict.fromkeys(found))
+
+
+def queue_workbook(db: Session, email: str, items: list) -> bytes:
+    """One Excel for a queued list: a Links sheet, then every link's comments and objectives."""
+    from services.analysis import Analysis
+    links, comments, objectives = [], [], []
+    for item in items:
+        row = {"Link": item["url"], "Status": item["status"].capitalize(), "Comments": None, "Note": item.get("message") or ""}
+        links.append(row)
+        if not item.get("filename"):
+            continue
+        try:
+            analysis = Analysis(db, email, item["filename"])
+        except Exception as e:
+            logger.warning(f"Queue result {item['filename']} left out: {e}")
+            row["Note"] = "Result file is no longer available"
+            continue
+        rows = analysis.rows.assign(Sentiment=analysis.rows["Sentiment"].map(lambda s: SENTIMENT_LABELS.get(s, s)))
+        rows.insert(0, "Source Link", item["url"])
+        comments.append(rows)
+        row["Comments"] = len(rows)
+        objectives += [{
+            "Source Link": item["url"],
+            "Objective": r["objective"],
+            "Relevant Comments": r["relevant_comments"],
+            "Supports": r["supports"],
+            "Neutral": r["neutral"],
+            "Against": r["against"],
+            "% Met": r["percent_met"],
+            "Average Alignment": r["average_alignment"],
+            "Summary": r["summary"],
+        } for r in analysis.objective_results]
+
+    # Comments are untrusted text: never let "=..." become a live formula.
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="xlsxwriter", engine_kwargs={"options": {"strings_to_formulas": False, "strings_to_urls": False}}) as writer:
+        pd.DataFrame(links).to_excel(writer, index=False, sheet_name="Links")
+        if comments:
+            pd.concat(comments, ignore_index=True).to_excel(writer, index=False, sheet_name="All Comments")
+        if objectives:
+            pd.DataFrame(objectives).to_excel(writer, index=False, sheet_name="Objectives")
+    return buffer.getvalue()

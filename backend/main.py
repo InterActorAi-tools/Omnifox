@@ -7,7 +7,8 @@ import logging
 import os
 import time
 import uuid
-from fastapi import FastAPI, Request, Response, HTTPException, BackgroundTasks, Depends
+from datetime import datetime, timedelta, timezone
+from fastapi import FastAPI, Request, Response, HTTPException, BackgroundTasks, Depends, File, UploadFile
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -40,6 +41,7 @@ from database import SessionLocal, run_migrations, get_db, bootstrap_lock
 from bootstrap import run_bootstrap
 from utils.dependencies import (
     get_current_user, log_activity, authenticate_sse_cookie, require_client_ownership, require_no_running_task,
+    require_task_ownership,
 )
 from utils.paths import safe_upload_path
 from cryptography.fernet import InvalidToken
@@ -49,7 +51,7 @@ from services.privacy import run_retention
 from utils.rate_limit import limiter, rate_limit_exceeded_handler, USER_OR_IP
 from utils.cookies import ACCESS_TOKEN_COOKIE, CSRF_COOKIE, CSRF_HEADER
 from slowapi.errors import RateLimitExceeded
-from models import User
+from models import Task, User
 
 # Import ALL routers
 from api.routes import api_router
@@ -426,16 +428,22 @@ async def process_url_endpoint(
         logger.exception("Error in process_url_endpoint")
         raise HTTPException(status_code=500, detail="URL processing failed")
 
-MAX_QUEUED_URLS = 10
+MAX_QUEUED_URLS = 50
+MAX_QUEUED_URLS_PER_HOUR = 100
 
 class URLQueueData(BaseModel):
     urls: list[str] = Field(min_length=1)
     project: str = "default"
     post_context: str = Field(default="", max_length=2048)
 
-# 3 lists of at most 10 links an hour keeps the same AI cap as process_url (H2).
+def queued_links_last_hour(db: Session, client_id: str) -> int:
+    since = datetime.now(timezone.utc) - timedelta(hours=1)
+    queues = db.query(Task).filter(Task.client_id == client_id, Task.task_type == "url_queue", Task.created_at >= since)
+    return sum(len((q.metadata_json or {}).get("items", [])) for q in queues)
+
+# A budget of 100 queued links an hour caps AI and ExportComments cost (H2).
 @app.post("/api/process_url_queue/{client_id}")
-@limiter.limit("3/hour", key_func=USER_OR_IP)
+@limiter.limit("20/hour", key_func=USER_OR_IP)
 async def process_url_queue_endpoint(
     client_id: str,
     form_data: URLQueueData,
@@ -451,6 +459,9 @@ async def process_url_queue_endpoint(
     urls = list(dict.fromkeys(u.strip() for u in form_data.urls if u.strip()))
     if not urls or len(urls) > MAX_QUEUED_URLS:
         raise HTTPException(status_code=400, detail=f"Add between 1 and {MAX_QUEUED_URLS} links.")
+    left = MAX_QUEUED_URLS_PER_HOUR - queued_links_last_hour(db, client_id)
+    if len(urls) > left:
+        raise HTTPException(status_code=429, detail=f"You can queue {MAX_QUEUED_URLS_PER_HOUR} links an hour; {max(left, 0)} left for now.")
     require_project_access(db, current_user, form_data.project)
     keys.use_project(db, form_data.project)  # the queue and its links' results use a private project's key
     require_no_running_task(client_id)
@@ -469,6 +480,49 @@ async def process_url_queue_endpoint(
     payload = URLRequest(url="", project=form_data.project, post_context=form_data.post_context)
     background_tasks.add_task(run_url_queue, queue_id, client_id, current_user.id, payload, urls, request)
     return {"queue_id": queue_id, "status": "processing", "items": items}
+
+@app.get("/api/queue_download/{queue_id}")
+async def download_queue_results(
+    queue_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """All results of a queued list of links in one Excel file."""
+    queue = task_manager.get_task(queue_id)
+    require_task_ownership(queue, current_user)
+    if queue.task_type != "url_queue":
+        raise HTTPException(status_code=404, detail="Task not found")
+    keys.use_project(db, queue.metadata.get("project", "default"))
+
+    from api.routes.extraction import queue_workbook
+    content = await asyncio.to_thread(queue_workbook, db, current_user.email, queue.metadata.get("items", []))
+    filename = f"omnifox_links_{queue.created_at:%Y-%m-%d_%H%M}.xlsx"
+    try:
+        log_activity(db, current_user.id, "file_downloaded", request.client.host,
+                     request.headers.get("user-agent", "unknown"), {"filename": filename, "size": len(content)})
+    except Exception:
+        pass
+    return Response(
+        content=content,
+        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+MAX_LINK_LIST_BYTES = 2 * 1024 * 1024
+
+@app.post("/api/link_list")
+async def read_link_list(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
+    """The links in an uploaded Excel list, to fill the links box."""
+    data = await file.read(MAX_LINK_LIST_BYTES + 1)
+    if len(data) > MAX_LINK_LIST_BYTES:
+        raise HTTPException(status_code=400, detail="The list is too large (2 MB at most).")
+    from api.routes.extraction import links_in_workbook
+    try:
+        links = await asyncio.to_thread(links_in_workbook, data)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not read this Excel file.")
+    return {"links": links}
 
 # File download endpoint
 @app.get("/api/download/{client_id}/{filename}")

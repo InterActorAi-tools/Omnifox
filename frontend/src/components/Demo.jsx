@@ -374,10 +374,10 @@ const Demo = ({ user }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps -- poll again after each update
     }, [queue]);
 
-    const handleUrlQueue = async () => {
+    const handleUrlQueue = async (urls = links) => {
         setUploadStatus("");
         try {
-            const { data } = await api.post(`/process_url_queue/${clientId}`, { urls: links, project: selectedProject, post_context: postContext });
+            const { data } = await api.post(`/process_url_queue/${clientId}`, { urls, project: selectedProject, post_context: postContext });
             setQueue({ ...data, status: "processing" });
             setUrl("");
         } catch (error) {
@@ -390,11 +390,23 @@ const Demo = ({ user }) => {
         setQueue((await loadQueue()) || queue);
     };
 
-    // A .txt or .csv file with one link per line fills the links box.
+    // A .txt, .csv or .xlsx file of links fills the links box.
     const handleLinkList = async (e) => {
         const listFile = e.target.files[0];
         e.target.value = "";
-        if (listFile) setUrl((await listFile.text()).split(/[\s,;]+/).filter((link) => /^https?:\/\//i.test(link)).join("\n"));
+        if (!listFile) return;
+        if (!/\.xlsx$/i.test(listFile.name)) {
+            setUrl((await listFile.text()).split(/[\s,;]+/).filter((link) => /^https?:\/\//i.test(link)).join("\n"));
+            return;
+        }
+        const form = new FormData();
+        form.append("file", listFile);
+        try {
+            const { data } = await api.post("/link_list", form, { headers: { "Content-Type": "multipart/form-data" } });
+            setUrl(data.links.join("\n"));
+        } catch (error) {
+            setUploadStatus(errorMessage(error, "Could not read the list of links."));
+        }
     };
 
     const handleUrlUpload = async (url) => {
@@ -673,6 +685,7 @@ const Demo = ({ user }) => {
                             queue={queue}
                             onOpen={(filename) => setSearchParams({ result: filename })}
                             onCancel={cancelQueue}
+                            onRetry={handleUrlQueue}
                             onDismiss={() => setQueue(null)}
                         />
                     )}
@@ -708,12 +721,12 @@ const Demo = ({ user }) => {
                                     className="border-2 border-gray-300 focus:border-[#3B9846] focus:outline-none py-1.5 pl-3 pr-12 rounded-lg w-full max-w-md transition-colors duration-300 resize-none"
                                 />
                                 <p className="mt-3 text-sm text-gray-600 text-center">
-                                    {links.length > 1 ? `${links.length} links will be queued and analyzed one after another (up to 10). ` : ""}
+                                    {links.length > 1 ? `${links.length} links will be queued and analyzed one after another (up to 50). ` : ""}
                                     <label className="font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900 cursor-pointer">
                                         Upload a list of links
-                                        <input type="file" accept=".txt,.csv" onChange={handleLinkList} className="sr-only" />
+                                        <input type="file" accept=".txt,.csv,.xlsx" onChange={handleLinkList} className="sr-only" />
                                     </label>{" "}
-                                    (.txt or .csv)
+                                    (.txt, .csv or .xlsx)
                                 </p>
                             </div>
                         )}
