@@ -34,6 +34,7 @@ class UserResponse(BaseModel):
     auth_provider: str
     email_verified: bool
     two_factor_enabled: bool
+    must_change_password: bool = False
     created_at: datetime
     last_login: Optional[datetime] = None
     
@@ -52,6 +53,7 @@ class UserResponse(BaseModel):
             auth_provider=user.auth_provider,
             email_verified=user.email_verified,
             two_factor_enabled=user.two_factor_enabled,
+            must_change_password=bool(user.must_change_password),
             created_at=user.created_at,
             last_login=user.last_login,
             roles=user.get_role_names(),

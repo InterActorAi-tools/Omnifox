@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { authService } from '../services/authService';
+import ForcePasswordChange from './ForcePasswordChange';
 
 export default function ProtectedRoute({ children, requirePermission = null }) {
   // No cached user means no session: redirect without side effects.
@@ -7,6 +8,9 @@ export default function ProtectedRoute({ children, requirePermission = null }) {
   const user = authService.getStoredUser();
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+  if (user.must_change_password) {
+    return <ForcePasswordChange />;
   }
 
   // If specific permission required, check it

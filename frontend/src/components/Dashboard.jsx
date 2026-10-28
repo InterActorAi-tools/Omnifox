@@ -100,6 +100,8 @@ export default function Dashboard() {
     const [showAddUser, setShowAddUser] = useState(false);
     const [newUser, setNewUser] = useState({ email: "", name: "" });
     const [generatedLink, setGeneratedLink] = useState("");
+    const [showCreateUser, setShowCreateUser] = useState(false);
+    const [createForm, setCreateForm] = useState({ email: "", name: "", password: "", role: "basic_user" });
 
     // Edit/Reset State
     const [editingUser, setEditingUser] = useState(null);
@@ -224,6 +226,19 @@ export default function Dashboard() {
             showModal("Invitation link generated!", "success");
         } catch (error) {
             showModal(errorMessage(error, "Failed to generate invite"), "error");
+        }
+    };
+
+    const handleCreateUser = async (e) => {
+        e.preventDefault();
+        try {
+            await api.post("/admin/users", createForm);
+            setCreateForm({ email: "", name: "", password: "", role: "basic_user" });
+            setShowCreateUser(false);
+            loadAdminData();
+            showModal("Account created. Send them the email and temporary password; they choose their own at first sign-in.", "success");
+        } catch (error) {
+            showModal(errorMessage(error, "Failed to create the account"), "error");
         }
     };
 
@@ -737,6 +752,12 @@ export default function Dashboard() {
                                 title="Team Members"
                                 subtitle="Manage user access & roles."
                                 action={
+                                    <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setShowCreateUser(!showCreateUser)}
+                                        className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-medium border border-green-700 text-green-700 rounded-lg hover:bg-green-50 transition-all">
+                                        {showCreateUser ? "Cancel" : <><AiOutlinePlus size={18} /> Create Account</>}
+                                    </button>
                                     <button
                                         onClick={() => {
                                             setShowAddUser(!showAddUser);
@@ -754,6 +775,7 @@ export default function Dashboard() {
                                             </>
                                         )}
                                     </button>
+                                    </div>
                                 }
                             />
 
@@ -826,6 +848,49 @@ export default function Dashboard() {
                                         )}
                                     </DashboardCard>
                                 </div>
+                            )}
+
+                            {/* Create Account Form */}
+                            {showCreateUser && (
+                                <DashboardCard className="mb-4 sm:mb-6 p-4 sm:p-6 border-green-200 bg-green-50/30">
+                                    <h3 className="font-bold text-gray-900 mb-1 text-sm sm:text-base">Create Account</h3>
+                                    <p className="mb-4 text-xs sm:text-sm text-gray-600">They sign in with this temporary password and must choose their own straight away.</p>
+                                    <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 items-end">
+                                        {[
+                                            { key: "email", label: "Email Address", type: "email" },
+                                            { key: "name", label: "Full Name", type: "text" },
+                                            { key: "password", label: "Temporary Password", type: "text" },
+                                        ].map((f) => (
+                                            <div key={f.key}>
+                                                <label htmlFor={`create-${f.key}`} className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">{f.label}</label>
+                                                <input
+                                                    id={`create-${f.key}`}
+                                                    type={f.type}
+                                                    required
+                                                    autoComplete="off"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 focus:border-green-500 text-sm"
+                                                    value={createForm[f.key]}
+                                                    onChange={(e) => setCreateForm({ ...createForm, [f.key]: e.target.value })}
+                                                />
+                                            </div>
+                                        ))}
+                                        <div>
+                                            <label htmlFor="create-role" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Role</label>
+                                            <select
+                                                id="create-role"
+                                                value={createForm.role}
+                                                onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                {roles.map((role) => <option key={role.name} value={role.name}>{role.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <button
+                                            type="submit"
+                                            className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 font-medium transition-colors text-sm">
+                                            Create Account
+                                        </button>
+                                    </form>
+                                </DashboardCard>
                             )}
 
                             {/* Join Requests */}

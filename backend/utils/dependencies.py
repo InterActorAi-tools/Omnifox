@@ -34,6 +34,9 @@ def _extract_access_token(
     return None
 
 
+PASSWORD_CHANGE_PATHS = {"/api/users/me", "/api/users/me/change-password", "/api/auth/logout"}
+
+
 def _user_from_token(token: str, db: Session, request: Request | None = None) -> User:
     """Validate a JWT and return the corresponding User row.
 
@@ -76,6 +79,10 @@ def _user_from_token(token: str, db: Session, request: Request | None = None) ->
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
         )
+
+    # An account made by an admin can do nothing until its password is changed.
+    if user.must_change_password and request is not None and request.url.path not in PASSWORD_CHANGE_PATHS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Please change your password first")
 
     # Unlock this user's private-project keys for the rest of the request.
     keys.unlock(db, user, session, request.cookies.get(DATA_KEY_COOKIE) if request else None)

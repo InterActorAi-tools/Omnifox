@@ -8,7 +8,8 @@ from models import User, Role, RefreshToken, Invitation, JoinRequest
 from schemas.auth import UserResponse, SessionResponse
 from utils.dependencies import find_user_by_email, get_admin_user, log_activity
 from services.privacy import delete_user_data
-from utils.security import hash_token
+from utils.password_validator import validate_password_strength
+from utils.security import hash_password, hash_token
 from utils.whitelist import require_whitelisted_email
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
@@ -19,6 +20,12 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 # Schemas
 class UpdateUserRolesRequest(BaseModel):
     role_names: List[str]
+
+class CreateUserRequest(BaseModel):
+    email: EmailStr
+    name: str
+    password: str
+    role: str = "basic_user"
 
 class AcceptJoinRequest(BaseModel):
     role: str = "basic_user"
@@ -37,6 +44,37 @@ def get_all_users(
     """Get all users - Admin only"""
     users = db.query(User).all()
     return [UserResponse.from_user(user) for user in users]
+
+# Create an account with a temporary password (Admin only)
+@router.post("/users", response_model=UserResponse)
+def create_user(
+    data: CreateUserRequest,
+    request: Request,
+    current_user: User = Depends(get_admin_user),
+    db: Session = Depends(get_db)
+):
+    """Create a user who must change the password at first sign-in - Admin only"""
+    email = data.email.strip().lower()
+    require_whitelisted_email(email)  # @in2-comms.com only
+    is_valid, error_message = validate_password_strength(data.password)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_message)
+    role = db.query(Role).filter(Role.name == data.role).first()
+    if not role:
+        raise HTTPException(status_code=400, detail=f"Unknown role '{data.role}'")
+    if find_user_by_email(db, email):
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+
+    user = User(email=email, name=data.name.strip(), hashed_password=hash_password(data.password),
+                auth_provider="email", email_verified=True, must_change_password=True)
+    user.roles.append(role)
+    db.add(user)
+    db.query(JoinRequest).filter(JoinRequest.email == email).delete(synchronize_session=False)
+    db.commit()
+    db.refresh(user)
+    log_activity(db, current_user.id, "admin_user_created", request.client.host, None,
+                 {"target_email": email, "role": role.name})
+    return UserResponse.from_user(user)
 
 # Update user roles (Admin only)
 @router.put("/users/{user_id}/roles", response_model=UserResponse)

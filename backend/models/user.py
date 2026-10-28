@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Index
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, Index, false
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database import Base
@@ -44,6 +44,7 @@ class User(Base):
     
     # Security
     is_active = Column(Boolean, default=True)
+    must_change_password = Column(Boolean, default=False, nullable=False, server_default=false())  # set when an admin chose the password
     # 🔥 REMOVE is_admin - we'll use roles instead
     failed_login_attempts = Column(Integer, default=0)
     locked_until = Column(DateTime(timezone=True), nullable=True)

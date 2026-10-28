@@ -172,6 +172,7 @@ async def change_current_user_password(
     
     # 3. Hash and save new password; the private-project key follows it
     current_user.hashed_password = hash_password(data.new_password)
+    current_user.must_change_password = False
     private = keys.open_private_key(current_user, data.current_password)
     if private:
         keys.relock_private_key(current_user, private, data.new_password)

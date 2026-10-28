@@ -513,6 +513,7 @@ def reset_password(
         
     # Set the new password
     user.hashed_password = hash_password(data.new_password)
+    user.must_change_password = False
     
     # Invalidate the token
     user.reset_token_hash = None
