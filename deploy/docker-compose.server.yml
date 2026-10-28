@@ -40,7 +40,7 @@ services:
     restart: unless-stopped
     environment:
       - API_URL=https://${SITE_ADDRESS}/api
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-not-configured}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
 
   db:
     image: postgres:18.1

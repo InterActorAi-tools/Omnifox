@@ -4,7 +4,7 @@ set -euo pipefail
 CONFIG_FILE="/usr/share/nginx/html/config.js"
 
 : "${API_URL:?API_URL must be set}"
-: "${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID must be set}"
+GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}"  # empty hides Google sign-in
 
 escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'

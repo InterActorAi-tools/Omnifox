@@ -4,6 +4,9 @@ import { authService, errorMessage } from '../services/authService';
 import { AiOutlineEye, AiOutlineEyeInvisible } from 'react-icons/ai';
 import { wordmark } from '../assets';
 
+// Google sign-in shows only when a client ID is configured (off for now: accounts are made by admins).
+const GOOGLE_CLIENT_ID = window.APP_CONFIG?.GOOGLE_CLIENT_ID;
+
 export default function Login({ onLoginSuccess }) {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
@@ -20,6 +23,7 @@ export default function Login({ onLoginSuccess }) {
 
   // Load Google Sign-In script
   useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return;
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
@@ -28,17 +32,9 @@ export default function Login({ onLoginSuccess }) {
 
     script.onload = () => {
       if (window.google) {
-        // M1: source the Google client ID exclusively from runtime
-        // config. The previous hardcoded fallback baked one tenant's
-        // GCP project number into every build of this image and made
-        // per-environment configuration impossible.
-        const clientId = window.APP_CONFIG?.GOOGLE_CLIENT_ID;
-        if (!clientId) {
-          console.error('GOOGLE_CLIENT_ID missing from runtime config (window.APP_CONFIG)');
-          return;
-        }
+        // M1: source the Google client ID exclusively from runtime config.
         window.google.accounts.id.initialize({
-          client_id: clientId,
+          client_id: GOOGLE_CLIENT_ID,
           callback: handleGoogleLogin,
         });
 
@@ -183,20 +179,24 @@ export default function Login({ onLoginSuccess }) {
                 </div>
               )}
 
-              {/* Google Sign-In Button */}
-              <div className="w-full">
-                <div id="googleSignInButton" className="flex justify-center w-full"></div>
-              </div>
+              {GOOGLE_CLIENT_ID && (
+                <>
+                  {/* Google Sign-In Button */}
+                  <div className="w-full">
+                    <div id="googleSignInButton" className="flex justify-center w-full"></div>
+                  </div>
 
-              {/* Divider */}
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">Or continue with email</span>
-                </div>
-              </div>
+                  {/* Divider */}
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-300"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-2 bg-white text-gray-500">Or continue with email</span>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Email/Password Form */}
               <div className="rounded-md space-y-4">
