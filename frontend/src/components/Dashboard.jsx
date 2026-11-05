@@ -998,7 +998,7 @@ export default function Dashboard() {
                             {/* MODALS */}
                             {resetLink && (
                                 <Modal title={`Reset link for ${resetLink.email}`} onClose={() => setResetLink(null)}>
-                                    <p className="mb-3 text-sm text-gray-600">Send this link to them. It works once and expires in 1 hour. If they have private projects, they will need their recovery code to open them again.</p>
+                                    <p className="mb-3 text-sm text-gray-600">Send this link to them. It works once and expires in 24 hours. If they have private projects, they will need their recovery code to open them again.</p>
                                     <div className="flex flex-col sm:flex-row gap-2 mb-6">
                                         <input
                                             readOnly

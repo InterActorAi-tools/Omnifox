@@ -151,14 +151,14 @@ def create_reset_link(
     current_user: User = Depends(get_admin_user),
     db: Session = Depends(get_db)
 ):
-    """Create a 1-hour password reset link for a user - Admin only"""
+    """Create a 24-hour password reset link for a user - Admin only"""
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     token = secrets.token_urlsafe(32)
     user.reset_token_hash = hash_token(token)
-    user.reset_token_expires = datetime.utcnow() + timedelta(hours=1)
+    user.reset_token_expires = datetime.utcnow() + timedelta(hours=24)
     db.commit()
     log_activity(db, current_user.id, "admin_reset_link_created", request.client.host, None, {"target_email": user.email})
 
