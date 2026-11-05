@@ -98,10 +98,8 @@ export default function Dashboard() {
 
     // Invite System State
     const [showAddUser, setShowAddUser] = useState(false);
-    const [newUser, setNewUser] = useState({ email: "", name: "" });
+    const [newUser, setNewUser] = useState({ email: "", name: "", role: "basic_user" });
     const [generatedLink, setGeneratedLink] = useState("");
-    const [showCreateUser, setShowCreateUser] = useState(false);
-    const [createForm, setCreateForm] = useState({ email: "", name: "", password: "", role: "basic_user" });
 
     // Edit/Reset State
     const [editingUser, setEditingUser] = useState(null);
@@ -215,30 +213,12 @@ export default function Dashboard() {
     const handleInviteUser = async (e) => {
         e.preventDefault();
         try {
-            const response = await api.post("/admin/invitations/generate", { 
-                email: newUser.email, 
-                name: newUser.name, 
-                role: "basic_user" 
-            });
+            const response = await api.post("/admin/invitations/generate", newUser);
             setGeneratedLink(response.data.link);
             loadAdminData();
-            // 👇 Uses the fancy modal instead of alert()
-            showModal("Invitation link generated!", "success");
+            showModal("Account link created!", "success");
         } catch (error) {
-            showModal(errorMessage(error, "Failed to generate invite"), "error");
-        }
-    };
-
-    const handleCreateUser = async (e) => {
-        e.preventDefault();
-        try {
-            await api.post("/admin/users", createForm);
-            setCreateForm({ email: "", name: "", password: "", role: "basic_user" });
-            setShowCreateUser(false);
-            loadAdminData();
-            showModal("Account created. Send them the email and temporary password; they choose their own at first sign-in.", "success");
-        } catch (error) {
-            showModal(errorMessage(error, "Failed to create the account"), "error");
+            showModal(errorMessage(error, "Failed to create the account link"), "error");
         }
     };
 
@@ -752,18 +732,12 @@ export default function Dashboard() {
                                 title="Team Members"
                                 subtitle="Manage user access & roles."
                                 action={
-                                    <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setShowCreateUser(!showCreateUser)}
-                                        className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-medium border border-green-700 text-green-700 rounded-lg hover:bg-green-50 transition-all">
-                                        {showCreateUser ? "Cancel" : <><AiOutlinePlus size={18} /> Create Account</>}
-                                    </button>
                                     <button
                                         onClick={() => {
                                             setShowAddUser(!showAddUser);
                                             if (!showAddUser) {
                                                 setGeneratedLink("");
-                                                setNewUser({ email: "", name: "" });
+                                                setNewUser({ email: "", name: "", role: "basic_user" });
                                             }
                                         }}
                                         className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm font-medium bg-green-700 text-white rounded-lg hover:bg-green-800 shadow-sm transition-all">
@@ -771,11 +745,10 @@ export default function Dashboard() {
                                             "Cancel"
                                         ) : (
                                             <>
-                                                <AiOutlinePlus size={18} /> Invite User
+                                                <AiOutlinePlus size={18} /> Create Account
                                             </>
                                         )}
                                     </button>
-                                    </div>
                                 }
                             />
 
@@ -783,10 +756,10 @@ export default function Dashboard() {
                             {showAddUser && (
                                 <div className="mb-4 sm:mb-6">
                                     <DashboardCard className="p-4 sm:p-6 border-green-200 bg-green-50/30">
-                                        <h3 className="font-bold text-gray-900 mb-4 text-sm sm:text-base">Invite New Team Member</h3>
+                                        <h3 className="font-bold text-gray-900 mb-4 text-sm sm:text-base">Create Account</h3>
                                         {generatedLink ? (
                                             <div className="bg-white p-3 sm:p-4 rounded-lg border border-green-200 shadow-sm">
-                                                <p className="text-green-700 font-medium mb-2 text-sm">✅ Invitation Link Generated (valid for 24 hours)</p>
+                                                <p className="text-green-700 font-medium mb-2 text-sm">✅ Send this link to them. It works once and expires in 24 hours; they choose their own password.</p>
                                                 <div className="flex flex-col sm:flex-row gap-2">
                                                     <input
                                                         readOnly
@@ -806,7 +779,7 @@ export default function Dashboard() {
                                                 <button
                                                     onClick={() => {
                                                         setGeneratedLink("");
-                                                        setNewUser({ email: "", name: "" });
+                                                        setNewUser({ email: "", name: "", role: "basic_user" });
                                                         setShowAddUser(false);
                                                     }}
                                                     className="mt-3 text-xs sm:text-sm text-gray-500 hover:text-gray-700 underline">
@@ -839,58 +812,25 @@ export default function Dashboard() {
                                                         onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
                                                     />
                                                 </div>
+                                                <div>
+                                                    <label htmlFor="invite-role" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Role</label>
+                                                    <select
+                                                        id="invite-role"
+                                                        value={newUser.role}
+                                                        onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+                                                        {roles.map((role) => <option key={role.name} value={role.name}>{role.name}</option>)}
+                                                    </select>
+                                                </div>
                                                 <button
                                                     type="submit"
                                                     className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 font-medium transition-colors text-sm">
-                                                    Generate Link
+                                                    Create Account
                                                 </button>
                                             </form>
                                         )}
                                     </DashboardCard>
                                 </div>
-                            )}
-
-                            {/* Create Account Form */}
-                            {showCreateUser && (
-                                <DashboardCard className="mb-4 sm:mb-6 p-4 sm:p-6 border-green-200 bg-green-50/30">
-                                    <h3 className="font-bold text-gray-900 mb-1 text-sm sm:text-base">Create Account</h3>
-                                    <p className="mb-4 text-xs sm:text-sm text-gray-600">They sign in with this temporary password and must choose their own straight away.</p>
-                                    <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 items-end">
-                                        {[
-                                            { key: "email", label: "Email Address", type: "email" },
-                                            { key: "name", label: "Full Name", type: "text" },
-                                            { key: "password", label: "Temporary Password", type: "text" },
-                                        ].map((f) => (
-                                            <div key={f.key}>
-                                                <label htmlFor={`create-${f.key}`} className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">{f.label}</label>
-                                                <input
-                                                    id={`create-${f.key}`}
-                                                    type={f.type}
-                                                    required
-                                                    autoComplete="off"
-                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/20 focus:border-green-500 text-sm"
-                                                    value={createForm[f.key]}
-                                                    onChange={(e) => setCreateForm({ ...createForm, [f.key]: e.target.value })}
-                                                />
-                                            </div>
-                                        ))}
-                                        <div>
-                                            <label htmlFor="create-role" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Role</label>
-                                            <select
-                                                id="create-role"
-                                                value={createForm.role}
-                                                onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                                                {roles.map((role) => <option key={role.name} value={role.name}>{role.name}</option>)}
-                                            </select>
-                                        </div>
-                                        <button
-                                            type="submit"
-                                            className="w-full sm:w-auto px-4 sm:px-6 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 font-medium transition-colors text-sm">
-                                            Create Account
-                                        </button>
-                                    </form>
-                                </DashboardCard>
                             )}
 
                             {/* Join Requests */}
