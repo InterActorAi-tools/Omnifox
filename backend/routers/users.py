@@ -44,8 +44,10 @@ class ChangePasswordRequest(BaseModel):
 # ================================================
 
 @router.post("/me/2fa/enable")
+@limiter.limit("5/minute", key_func=USER_OR_IP)
 def enable_2fa(
     request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -71,9 +73,11 @@ def enable_2fa(
     return {"qr_code_uri": qr_code_uri, "secret": secret}
 
 @router.post("/me/2fa/confirm")
+@limiter.limit("5/minute", key_func=USER_OR_IP)
 def confirm_2fa(
     data: Confirm2FARequest,
     request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -110,9 +114,11 @@ def confirm_2fa(
     }
 
 @router.post("/me/2fa/disable")
+@limiter.limit("5/minute", key_func=USER_OR_IP)
 def disable_2fa(
     data: Disable2FARequest,
     request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -146,9 +152,11 @@ def disable_2fa(
 
 # ================================================
 @router.post("/me/change-password")
+@limiter.limit("5/minute", key_func=USER_OR_IP)
 async def change_current_user_password(
     data: ChangePasswordRequest,
     request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -292,6 +300,7 @@ def get_user_activity(
 @router.delete("/me/sessions/{session_id}")
 def delete_session(
     session_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -306,7 +315,7 @@ def delete_session(
     
     db.delete(session)
     db.commit()
-    
+    log_activity(db, current_user.id, "session_revoked", request.client.host, request.headers.get("user-agent"))
     return {"message": "Session deleted successfully"}
 
 @router.post("/me/logout-all")
@@ -363,12 +372,14 @@ async def export_my_data(
 @router.delete("/me/results/{filename}")
 def delete_my_result(
     filename: str,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Delete one of your results (file and stored analysis)."""
     if not delete_result(db, current_user.email, filename):
         raise HTTPException(status_code=404, detail="Result not found")
+    log_activity(db, current_user.id, "result_deleted", request.client.host, request.headers.get("user-agent"), {"filename": filename})
     return {"message": "Result deleted"}
 
 

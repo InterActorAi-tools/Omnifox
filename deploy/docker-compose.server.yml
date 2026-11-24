@@ -1,7 +1,16 @@
 # Single-server deploy: builds the images from this repo and serves them
 # over HTTPS through Caddy. See deploy/README.md.
+
+# Cap container logs so they can't fill the disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   caddy:
+    logging: *logging
     image: caddy:2.10
     restart: unless-stopped
     depends_on:
@@ -17,10 +26,12 @@ services:
       - caddy_data:/data
 
   backend:
+    logging: *logging
     build: ../backend
     restart: unless-stopped
     depends_on:
       db:
+    logging: *logging
         condition: service_healthy
     env_file: .env
     environment:
@@ -36,6 +47,7 @@ services:
       - cache:/app/cache
 
   frontend:
+    logging: *logging
     build: ../frontend
     restart: unless-stopped
     environment:

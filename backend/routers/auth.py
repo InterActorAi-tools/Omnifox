@@ -85,6 +85,7 @@ def get_invitation_details(token: str, db: Session = Depends(get_db)):
     }
 
 @router.post("/register", response_model=TokenResponse)
+@limiter.limit("20/hour")
 async def register(
     user_data: UserRegister,
     request: Request,
@@ -661,6 +662,7 @@ def google_login(
         )
 
 @router.post("/refresh", response_model=TokenResponse)
+@limiter.limit("60/minute")
 def refresh_tokens(
     request: Request,
     response: Response,

@@ -79,7 +79,43 @@ and password. Then delete the `FIRST_ADMIN_EMAIL` and `FIRST_ADMIN_PASSWORD` lin
 
 - **Logs:** `docker compose -f docker-compose.server.yml logs -f backend`
 - **Update:** `git pull && docker compose -f docker-compose.server.yml up -d --build`
-- **Back up the database:**
-  `docker compose -f docker-compose.server.yml exec db pg_dump -U omnifox omnifox > ~/omnifox-$(date +%F).sql`
+- **Audit log:** admins see every sign-in, failed sign-in, role change, reset link, project change,
+  upload, download and deletion in the **Audit Log** tab of the dashboard.
 - **Move to a real domain later:** point the domain's DNS at the server, set `SITE_ADDRESS` to it in `.env`,
   and run `up -d`.
+
+## Backups
+
+`backup.sh` saves the database and uploaded files to `~/omnifox-backups` and keeps 14 days.
+Run it every night at 3 AM:
+
+```bash
+(crontab -l 2>/dev/null; echo "0 3 * * * $HOME/omnifox/deploy/backup.sh") | crontab -
+```
+
+Copy the backups off the server now and then (for example `scp` to your Mac). They are useless
+without `DATA_ENCRYPTION_KEY`, so keep `.env` in a separate safe place, not next to the backups.
+
+To restore a database backup:
+
+```bash
+docker compose -f docker-compose.server.yml exec -T db pg_restore -U omnifox -d omnifox --clean < ~/omnifox-backups/db-YYYY-MM-DD.dump
+```
+
+## Security checklist
+
+Already handled by the setup above:
+
+- Only ports 22, 80 and 443 are open. Postgres and the backend are reachable only inside Docker.
+- HTTPS everywhere, with HSTS. Sign-in cookies are HttpOnly and Secure.
+- Production mode is forced (`DEBUG=False`), and the API docs pages are switched off.
+- Content Security Policy, clickjacking and MIME-sniffing headers are set.
+- Sign-in, 2FA, password, sign-up, reset and AI routes are rate limited.
+- Stored comments, results and IPs are encrypted with `DATA_ENCRYPTION_KEY`.
+- Container logs are capped at 50 MB each.
+
+Worth doing yourself:
+
+- Use SSH keys and turn off password login for SSH (`PasswordAuthentication no` in `/etc/ssh/sshd_config`).
+- Turn on automatic security updates: `sudo apt install unattended-upgrades`.
+- Sign in as admin and turn on 2FA under your profile.

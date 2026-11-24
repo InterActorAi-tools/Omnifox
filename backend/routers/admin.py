@@ -194,6 +194,7 @@ def get_pending_invitations(
 def revoke_user_session_admin(
     user_id: int,
     session_id: int,
+    request: Request,
     current_user: User = Depends(get_admin_user),
     db: Session = Depends(get_db)
 ):
@@ -208,7 +209,7 @@ def revoke_user_session_admin(
     
     db.delete(session)
     db.commit()
-    
+    log_activity(db, current_user.id, "admin_session_revoked", request.client.host, request.headers.get("user-agent"), {"target_user_id": user_id})
     return {"message": "Session revoked successfully"}
 
 # Invite Generator

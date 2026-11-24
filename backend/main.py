@@ -478,6 +478,7 @@ async def process_url_queue_endpoint(
         metadata={"project": form_data.project, "items": items},
     ))
     payload = URLRequest(url="", project=form_data.project, post_context=form_data.post_context)
+    log_activity(db, current_user.id, "url_queue_started", request.client.host, request.headers.get("user-agent"), {"links": len(urls)})
     background_tasks.add_task(run_url_queue, queue_id, client_id, current_user.id, payload, urls, request)
     return {"queue_id": queue_id, "status": "processing", "items": items}
 
