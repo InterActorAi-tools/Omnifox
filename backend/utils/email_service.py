@@ -22,7 +22,7 @@ def send_email(to: str, subject: str, body_html: str) -> bool:
         resend.Emails.send({"from": settings.email_from, "to": [to], "subject": subject, "html": body_html})
         return True
     except Exception as e:
-        logger.error(f"Email to {to} failed: {e}")
+        logger.error(f"Email failed: {e}")  # no address: keep personal data out of logs
         return False
 
 

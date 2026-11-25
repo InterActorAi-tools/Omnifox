@@ -1,8 +1,18 @@
 # Deploy OmniFox on an Ubuntu server
 
-Runs OmniFox, Postgres and Caddy with Docker on one server. Caddy gets a free HTTPS
-certificate automatically. Without a domain, use `<your-ip-with-dashes>.sslip.io`
-(for example `79-98-31-17.sslip.io`), which always points at that IP.
+Runs OmniFox, Postgres and Caddy with Docker on one server (Ubuntu 22.04 or newer). Caddy gets a
+free HTTPS certificate automatically.
+
+You need:
+
+- A server with a public IP address and SSH access.
+- A web address for the app. Either a domain or subdomain whose DNS points at the server
+  (for example `omnifox.example.com`), or, without a domain, `<server-ip-with-dashes>.sslip.io`
+  (for example `203-0-113-10.sslip.io` for the IP 203.0.113.10), which always points at that IP.
+- API keys for Gemini and ExportComments.
+
+In the steps below, `<repo-url>` is the SSH address of the GitHub repository holding this code
+(for example `git@github.com:your-org/omnifox.git`).
 
 ## 1. Update the server
 
@@ -43,7 +53,7 @@ cat ~/.ssh/id_ed25519.pub
 Add the printed key in GitHub: repo **Settings > Deploy keys > Add deploy key** (leave write access off). Then:
 
 ```bash
-git clone git@github.com:AboJadya/omnifox.git ~/omnifox
+git clone <repo-url> ~/omnifox
 cd ~/omnifox/deploy
 ```
 
@@ -58,9 +68,12 @@ echo "DATA_ENCRYPTION_KEY=$(openssl rand -base64 32 | tr '+/' '-_')"
 nano .env
 ```
 
-Paste the three generated lines into `.env`, then fill in `GEMINI_API_KEY`,
+Set `SITE_ADDRESS` to the web address (no `https://`). Paste the three generated lines into `.env`, then fill in `GEMINI_API_KEY`,
 `EXPORTCOMMENTS_API_KEY`, `FIRST_ADMIN_EMAIL` and `FIRST_ADMIN_PASSWORD` (12+ characters,
 letters and non-letters). `RESEND_API_KEY`, `EMAIL_FROM` and the Google values can stay empty (see Email below).
+
+Only email addresses on the allowed domains can join or be invited. These are set in
+`ALLOWED_DOMAINS` in `backend/utils/whitelist.py`.
 
 Keep a copy of `.env` somewhere safe. Without `DATA_ENCRYPTION_KEY` the stored data can't be read.
 
@@ -91,10 +104,10 @@ accepted, and "Forgot password?" reset links. Without email setup everything sti
 copy the links from Team Members and send them by hand.
 
 This needs someone who can change DNS for a domain the company owns. Use a subdomain
-such as `mail.in2-comms.com` so the company's normal email is not affected.
+such as `mail.example.com` so the company's normal email is not affected.
 
 1. **Add the domain in Resend.** Sign in at resend.com, open **Domains > Add domain**, and enter
-   the subdomain (for example `mail.in2-comms.com`).
+   the subdomain (for example `mail.example.com`).
 2. **Add the DNS records.** Resend lists a few records (an MX and TXT record for SPF, and a TXT
    record for DKIM). Add each one exactly as shown at the DNS provider, then click **Verify** in
    Resend. It can take from a few minutes to a few hours.
@@ -104,7 +117,7 @@ such as `mail.in2-comms.com` so the company's normal email is not affected.
 
    ```
    RESEND_API_KEY=re_xxxxxxxxxxxx
-   EMAIL_FROM="OmniFox <omnifox@mail.in2-comms.com>"
+   EMAIL_FROM="OmniFox <omnifox@mail.example.com>"
    ```
 
    The address in `EMAIL_FROM` must be on the verified domain. It doesn't need a real mailbox.
@@ -112,7 +125,7 @@ such as `mail.in2-comms.com` so the company's normal email is not affected.
 
 To check it, open the login page. It now shows a **Forgot your password?** link. Request a reset
 for your own account and the email should arrive within a minute. If it doesn't, look for
-`Email to ... failed` in `docker compose -f docker-compose.server.yml logs backend`.
+`Email failed` in `docker compose -f docker-compose.server.yml logs backend`.
 
 To turn email off again, empty both lines and run `up -d`.
 
