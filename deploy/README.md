@@ -60,7 +60,7 @@ nano .env
 
 Paste the three generated lines into `.env`, then fill in `GEMINI_API_KEY`,
 `EXPORTCOMMENTS_API_KEY`, `FIRST_ADMIN_EMAIL` and `FIRST_ADMIN_PASSWORD` (12+ characters,
-letters and non-letters). `RESEND_API_KEY` and the Google values can stay empty.
+letters and non-letters). `RESEND_API_KEY`, `EMAIL_FROM` and the Google values can stay empty (see Email below).
 
 Keep a copy of `.env` somewhere safe. Without `DATA_ENCRYPTION_KEY` the stored data can't be read.
 
@@ -83,6 +83,38 @@ and password. Then delete the `FIRST_ADMIN_EMAIL` and `FIRST_ADMIN_PASSWORD` lin
   upload, download and deletion in the **Audit Log** tab of the dashboard.
 - **Move to a real domain later:** point the domain's DNS at the server, set `SITE_ADDRESS` to it in `.env`,
   and run `up -d`.
+
+## Email (Resend)
+
+OmniFox can email people their Create Account link, a welcome when their join request is
+accepted, and "Forgot password?" reset links. Without email setup everything still works: admins
+copy the links from Team Members and send them by hand.
+
+This needs someone who can change DNS for a domain the company owns. Use a subdomain
+such as `mail.in2-comms.com` so the company's normal email is not affected.
+
+1. **Add the domain in Resend.** Sign in at resend.com, open **Domains > Add domain**, and enter
+   the subdomain (for example `mail.in2-comms.com`).
+2. **Add the DNS records.** Resend lists a few records (an MX and TXT record for SPF, and a TXT
+   record for DKIM). Add each one exactly as shown at the DNS provider, then click **Verify** in
+   Resend. It can take from a few minutes to a few hours.
+3. **Create an API key.** In Resend open **API Keys > Create API key**, choose **Sending access**,
+   and limit it to that domain.
+4. **Add two lines to `deploy/.env` on the server:**
+
+   ```
+   RESEND_API_KEY=re_xxxxxxxxxxxx
+   EMAIL_FROM="OmniFox <omnifox@mail.in2-comms.com>"
+   ```
+
+   The address in `EMAIL_FROM` must be on the verified domain. It doesn't need a real mailbox.
+5. **Apply it:** `docker compose -f docker-compose.server.yml up -d`
+
+To check it, open the login page. It now shows a **Forgot your password?** link. Request a reset
+for your own account and the email should arrive within a minute. If it doesn't, look for
+`Email to ... failed` in `docker compose -f docker-compose.server.yml logs backend`.
+
+To turn email off again, empty both lines and run `up -d`.
 
 ## Backups
 

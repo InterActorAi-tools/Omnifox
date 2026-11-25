@@ -1,47 +1,54 @@
+"""Emails sent through Resend. Off unless RESEND_API_KEY and EMAIL_FROM are both set;
+callers then fall back to links the admin copies by hand."""
+import html
+import logging
+
 import resend
 from config import settings
-import logging
 
 logger = logging.getLogger(__name__)
 
-resend.api_key = settings.resend_api_key
 
-async def send_password_reset_email(email: str, token: str):
-    """
-    Sends a password reset email using Resend.
-    """
-    if not resend.api_key:
-        logger.error("RESEND_API_KEY is not set. Cannot send email.")
-        # In production, you might want to raise an error
-        # but for dev, we'll just log it so it doesn't crash
+def email_enabled() -> bool:
+    return bool(settings.resend_api_key and settings.email_from)
+
+
+def send_email(to: str, subject: str, body_html: str) -> bool:
+    """Send one email. Returns False (never raises) if email is off or sending fails."""
+    if not email_enabled():
         return False
-
-    # M11: reset URL is built from settings.frontend_url so prod and
-    # staging both link to the right domain. Previously hardcoded to
-    # staging - any prod user resetting their password got pointed at
-    # the wrong environment.
-    reset_url = f"{settings.frontend_url}/reset-password?token={token}"
-
-    html_content = f"""
-    <p>Hi,</p>
-    <p>You requested a password reset for your OmniFox account.</p>
-    <p>Please click the link below to set a new password:</p>
-    <p><a href="{reset_url}">Reset Your Password</a></p>
-    <p>If you did not request this, you can safely ignore this email.</p>
-    <p>This link will expire in 1 hour.</p>
-    """
-
+    resend.api_key = settings.resend_api_key
     try:
-        params = {
-            "from": "OmniFox <onboarding@resend.dev>", # Must be a verified domain in Resend
-            "to": [email],
-            "subject": "Reset Your OmniFox Password",
-            "html": html_content,
-        }
-        
-        email_response = resend.Emails.send(params)
-        logger.info(f"Password reset email sent, ID: {email_response['id']}")
+        resend.Emails.send({"from": settings.email_from, "to": [to], "subject": subject, "html": body_html})
         return True
     except Exception as e:
-        logger.error(f"Failed to send password reset email: {str(e)}")
+        logger.error(f"Email to {to} failed: {e}")
         return False
+
+
+def _hi(name: str) -> str:
+    return f"Hi {name}," if name else "Hi,"
+
+
+def _page(greeting: str, text: str, link: str, button: str, note: str) -> str:
+    return (f"<p>{html.escape(greeting)}</p><p>{text}</p>"
+            f'<p><a href="{html.escape(link)}">{button}</a></p><p>{note}</p>')
+
+
+def send_password_reset_email(email: str, token: str) -> bool:
+    link = f"{settings.frontend_url}/reset-password?token={token}"
+    return send_email(email, "Reset your OmniFox password", _page(
+        "Hi,", "You asked to reset your OmniFox password.", link, "Set a new password",
+        "This link expires in 1 hour. If you didn't ask for it, you can ignore this email."))
+
+
+def send_invite_email(email: str, name: str, link: str) -> bool:
+    return send_email(email, "Your OmniFox account", _page(
+        _hi(name), "An OmniFox account has been created for you.", link,
+        "Set your password", "This link expires in 24 hours."))
+
+
+def send_welcome_email(email: str, name: str) -> bool:
+    return send_email(email, "Welcome to OmniFox", _page(
+        _hi(name), "Your request to join OmniFox has been accepted.",
+        f"{settings.frontend_url}/login", "Sign in", "Use the email and password you chose when you asked to join."))

@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
     google_client_id: str = ""
     resend_api_key: str = ""
+    email_from: str = ""  # e.g. "OmniFox <omnifox@mail.example.com>", on a domain verified in Resend
 
     # Public base URL of the frontend. Used to build user-visible links
     # (invitation links, password-reset links). Must be https in
@@ -85,6 +86,7 @@ class Settings(BaseSettings):
         self.data_encryption_key = os.getenv("DATA_ENCRYPTION_KEY", "")
         self.google_client_id = os.getenv("GOOGLE_CLIENT_ID", "")
         self.resend_api_key = os.getenv("RESEND_API_KEY", "")
+        self.email_from = os.getenv("EMAIL_FROM", "")
         self.frontend_url = os.getenv("FRONTEND_URL", "").rstrip("/")
 
         # Load other environment variables

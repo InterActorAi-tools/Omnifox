@@ -5,6 +5,7 @@ CONFIG_FILE="/usr/share/nginx/html/config.js"
 
 : "${API_URL:?API_URL must be set}"
 GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID:-}"  # empty hides Google sign-in
+EMAIL_ENABLED="${EMAIL_ENABLED:-}"  # empty hides "Forgot password?"
 
 escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -12,10 +13,12 @@ escape() {
 
 API_URL_ESCAPED=$(escape "$API_URL")
 GOOGLE_CLIENT_ID_ESCAPED=$(escape "$GOOGLE_CLIENT_ID")
+EMAIL_ENABLED_ESCAPED=$(escape "$EMAIL_ENABLED")
 
 cat > "$CONFIG_FILE" <<EOF
 window.APP_CONFIG = {
   "GOOGLE_CLIENT_ID": "${GOOGLE_CLIENT_ID_ESCAPED}",
+  "EMAIL_ENABLED": "${EMAIL_ENABLED_ESCAPED}",
   "API_URL": "${API_URL_ESCAPED}"
 };
 EOF

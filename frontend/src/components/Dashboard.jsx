@@ -216,7 +216,7 @@ export default function Dashboard() {
             const response = await api.post("/admin/invitations/generate", newUser);
             setGeneratedLink(response.data.link);
             loadAdminData();
-            showModal("Account link created!", "success");
+            showModal(response.data.email_sent ? `Link created and emailed to ${newUser.email}` : "Account link created! Send it to them yourself.", "success");
         } catch (error) {
             showModal(errorMessage(error, "Failed to create the account link"), "error");
         }

@@ -10,6 +10,7 @@ from utils.dependencies import find_user_by_email, get_admin_user, log_activity
 from services.privacy import delete_user_data
 from utils.security import hash_token
 from utils.whitelist import require_whitelisted_email
+from utils.email_service import send_invite_email, send_welcome_email
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 import secrets
@@ -249,12 +250,15 @@ def generate_invitation_link(
     # arrive from Omnifox's legitimate Resend sender domain.
     invite_link = f"{settings.frontend_url}/register?token={token}"
     
-    log_activity(db, current_user.id, "invitation_generated", request.client.host, None, {"target_email": data.email})
-    
+    email_sent = send_invite_email(invite.email, data.name, invite_link)
+    log_activity(db, current_user.id, "invitation_generated", request.client.host, None,
+                 {"target_email": data.email, "email_sent": email_sent})
+
     return {
-        "link": invite_link, 
+        "link": invite_link,
         "token": token,
-        "expires_at": invite.expires_at
+        "expires_at": invite.expires_at,
+        "email_sent": email_sent,
     }
 
 # Join requests (people asking to join without an invitation)
@@ -292,8 +296,9 @@ def accept_join_request(
     db.delete(join)
     db.commit()
     db.refresh(user)
+    email_sent = send_welcome_email(user.email, user.name)
     log_activity(db, current_user.id, "join_request_accepted", request.client.host, None,
-                 {"target_email": user.email, "role": role.name})
+                 {"target_email": user.email, "role": role.name, "email_sent": email_sent})
     return UserResponse.from_user(user)
 
 @router.delete("/join-requests/{request_id}")

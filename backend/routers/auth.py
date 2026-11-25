@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Response, status, Request
 from sqlalchemy.orm import Session
@@ -464,7 +465,7 @@ async def forgot_password(
         db.commit()
         
         # Send the email
-        email_sent = await send_password_reset_email(user.email, token)
+        email_sent = await asyncio.to_thread(send_password_reset_email, user.email, token)
         
         # Same response whether or not the email went out, otherwise a
         # 500 here would reveal that the account exists.

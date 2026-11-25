@@ -6,6 +6,7 @@ import { wordmark } from '../assets';
 
 // Google sign-in shows only when a client ID is configured (off for now: accounts are made by admins).
 const GOOGLE_CLIENT_ID = window.APP_CONFIG?.GOOGLE_CLIENT_ID;
+const EMAIL_ENABLED = window.APP_CONFIG?.EMAIL_ENABLED;
 
 export default function Login({ onLoginSuccess }) {
   const navigate = useNavigate();
@@ -241,7 +242,13 @@ export default function Login({ onLoginSuccess }) {
 
               <div className="flex items-center justify-end">
                 <div className="text-sm">
-                  <span className="text-gray-600">Forgot your password? Ask an admin for a reset link.</span>
+                  {EMAIL_ENABLED ? (
+                    <Link to="/forgot-password" className="font-medium text-green-700 hover:text-green-800">
+                      Forgot your password?
+                    </Link>
+                  ) : (
+                    <span className="text-gray-600">Forgot your password? Ask an admin for a reset link.</span>
+                  )}
                 </div>
               </div>
 

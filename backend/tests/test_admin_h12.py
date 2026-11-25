@@ -183,8 +183,7 @@ class TestInviteLinkSource:
 # ---- Password reset email (M11) -------------------------------------------
 
 class TestPasswordResetURL:
-    @pytest.mark.asyncio
-    async def test_reset_url_uses_configured_frontend_url(self, monkeypatch):
+    def test_reset_url_uses_configured_frontend_url(self, monkeypatch):
         # send_password_reset_email previously hardcoded the staging
         # hostname into every reset URL. After the M11 fix, the URL
         # must derive from settings.frontend_url.
@@ -204,11 +203,10 @@ class TestPasswordResetURL:
             return _FakeResp()
 
         monkeypatch.setattr(email_service.resend.Emails, "send", fake_send)
-        # Force the module to think the api key is set so it does not
-        # short-circuit to False.
-        monkeypatch.setattr(email_service.resend, "api_key", "test-key")
+        monkeypatch.setattr(settings, "resend_api_key", "test-key")
+        monkeypatch.setattr(settings, "email_from", "OmniFox <omnifox@example.com>")
 
-        ok = await email_service.send_password_reset_email(
+        ok = email_service.send_password_reset_email(
             "user@example.com", "tok-abc123"
         )
         assert ok is True
